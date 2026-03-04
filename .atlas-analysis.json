@@ -1,0 +1,104 @@
+{
+  "projectType": "saas",
+  "projectName": "Mslicer",
+  "projectDescription": "A high-performance, open-source slicer for MSLA resin 3D printers.",
+  "theme": "aspen",
+  "primaryColor": "#eac926",
+  "lightColor": "#997c29",
+  "darkColor": "#544e41",
+  "navigation": {
+    "tabs": [
+      {
+        "tab": "Documentation",
+        "groups": [
+          {
+            "group": "Get Started",
+            "pages": [
+              "introduction",
+              "installation",
+              "quickstart"
+            ]
+          },
+          {
+            "group": "Core Features",
+            "pages": [
+              "features/slicing",
+              "features/model-management",
+              "features/slice-preview",
+              "features/supports",
+              "features/remote-printing"
+            ]
+          },
+          {
+            "group": "Configuration",
+            "pages": [
+              "config/slice-settings",
+              "config/printer-presets",
+              "config/exposure-settings"
+            ]
+          },
+          {
+            "group": "Output Formats",
+            "pages": [
+              "formats/overview",
+              "formats/chitu-ctb",
+              "formats/elegoo-goo",
+              "formats/nanodlp",
+              "formats/svg"
+            ]
+          },
+          {
+            "group": "Advanced",
+            "pages": [
+              "advanced/cli-usage",
+              "advanced/post-processing",
+              "advanced/island-detection",
+              "advanced/remote-api"
+            ]
+          }
+        ]
+      },
+      {
+        "tab": "Reference",
+        "groups": [
+          {
+            "group": "CLI Reference",
+            "pages": [
+              "reference/cli/slicer-command",
+              "reference/cli/options"
+            ]
+          },
+          {
+            "group": "File Formats",
+            "pages": [
+              "reference/formats/project-files",
+              "reference/formats/supported-meshes"
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  "keyFeatures": [
+    "Ultra-fast slicing performance (20-120x faster than competitors)",
+    "Multiple output formats (Chitu CTB, Elegoo GOO, NanoDLP, SVG)",
+    "Interactive 3D viewport with real-time model manipulation",
+    "Layer-by-layer slice preview with zoom and pan",
+    "Automatic support generation and overhang detection",
+    "Remote printing via MQTT with real-time status monitoring",
+    "CLI tool for batch processing and automation",
+    "Advanced post-processing (anti-aliasing, island detection, elephant foot compensation)",
+    "Project save/load with undo/redo support",
+    "Printer presets for quick configuration"
+  ],
+  "publicApiSurface": [
+    "mslicer - GUI application",
+    "slicer - CLI tool with mesh loading and slicing",
+    "SliceConfig - Platform resolution, size, layer height, exposure settings",
+    "ExposureConfig - Layer exposure time, lift/retract speeds and distances",
+    "Output formats - CTB (Chitu), GOO (Elegoo), NanoDLP, SVG (Vector)",
+    "Remote printing - HTTP API for printer status monitoring",
+    "Post-processing - Anti-aliasing, island detection, elephant foot fixer",
+    "Support generation - Overhang detection and support routing"
+  ]
+}
