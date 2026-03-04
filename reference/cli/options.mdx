@@ -1,0 +1,214 @@
+---
+title: 'CLI Options'
+description: 'Complete reference for all command-line options and flags'
+---
+
+## Required Arguments
+
+<ParamField path="--mesh" type="PathBuf" required>
+  Path to a `.stl` or `.obj` mesh file to slice. Can be specified multiple times to load multiple models.
+
+  ```bash
+  slicer --mesh model.stl output.goo
+  ```
+
+  Multiple models:
+  ```bash
+  slicer --mesh model1.stl --mesh model2.stl output.goo
+  ```
+</ParamField>
+
+<ParamField path="output" type="PathBuf" required>
+  Output file path. The extension determines the format:
+  - `.goo` - Elegoo format
+  - `.ctb` - ChituBox encrypted format  
+  - `.nanodlp` - NanoDLP format
+  - `.svg` - Vector format
+
+  ```bash
+  slicer --mesh model.stl output.goo
+  ```
+</ParamField>
+
+## Platform Configuration
+
+<ParamField path="--platform-resolution" type="Vector2<u32>" default="11520, 5120">
+  Resolution of the printer mask display in pixels. Format: `width,height`
+
+  ```bash
+  slicer --platform-resolution 11520,5120 --mesh model.stl output.goo
+  ```
+</ParamField>
+
+<ParamField path="--platform-size" type="Vector3<f32>" default="218.88, 122.904, 260.0">
+  Size of the printer display/platform in millimeters. Format: `width,height,depth`
+
+  ```bash
+  slicer --platform-size 218.88,122.904,260.0 --mesh model.stl output.goo
+  ```
+</ParamField>
+
+## Layer Configuration
+
+<ParamField path="--layer-height" type="f32" default="0.05">
+  Layer height in millimeters. Typical values: 0.025mm (high detail) to 0.1mm (fast).
+
+  ```bash
+  slicer --layer-height 0.05 --mesh model.stl output.goo
+  ```
+</ParamField>
+
+<ParamField path="--first-layers" type="u32" default="3">
+  Number of initial 'first layers'. These layers use the first layer exposure configuration for better bed adhesion.
+
+  ```bash
+  slicer --first-layers 5 --mesh model.stl output.goo
+  ```
+</ParamField>
+
+<ParamField path="--transition-layers" type="u32" default="3">
+  Number of layers that interpolate from first layer settings to normal layer settings. Provides a smooth transition.
+
+  ```bash
+  slicer --transition-layers 5 --mesh model.stl output.goo
+  ```
+</ParamField>
+
+## Regular Layer Exposure
+
+<ParamField path="--exposure-time" type="f32" default="3.0">
+  Layer exposure time in seconds for normal layers.
+
+  ```bash
+  slicer --exposure-time 2.5 --mesh model.stl output.goo
+  ```
+</ParamField>
+
+<ParamField path="--lift-distance" type="f32" default="5.0">
+  Distance to lift the platform after exposing each regular layer, in millimeters.
+
+  ```bash
+  slicer --lift-distance 6.0 --mesh model.stl output.goo
+  ```
+</ParamField>
+
+<ParamField path="--lift-speed" type="f32" default="65.0">
+  Speed to lift the platform after exposing each regular layer, in mm/min.
+
+  ```bash
+  slicer --lift-speed 80.0 --mesh model.stl output.goo
+  ```
+</ParamField>
+
+<ParamField path="--retract-speed" type="f32" default="150.0">
+  Speed to retract (move down) the platform after exposing each regular layer, in mm/min.
+
+  ```bash
+  slicer --retract-speed 180.0 --mesh model.stl output.goo
+  ```
+</ParamField>
+
+## First Layer Exposure
+
+First layers use different settings to ensure proper bed adhesion.
+
+<ParamField path="--first-exposure-time" type="f32" default="30.0">
+  First layer exposure time in seconds. Typically much longer than regular layers.
+
+  ```bash
+  slicer --first-exposure-time 35.0 --mesh model.stl output.goo
+  ```
+</ParamField>
+
+<ParamField path="--first-lift-distance" type="f32" default="5.0">
+  Distance to lift the platform after exposing each first layer, in millimeters.
+
+  ```bash
+  slicer --first-lift-distance 6.0 --mesh model.stl output.goo
+  ```
+</ParamField>
+
+<ParamField path="--first-lift-speed" type="f32" default="65.0">
+  Speed to lift the platform after exposing each first layer, in mm/min.
+
+  ```bash
+  slicer --first-lift-speed 50.0 --mesh model.stl output.goo
+  ```
+</ParamField>
+
+<ParamField path="--first-retract-speed" type="f32" default="150.0">
+  Speed to retract (move down) the platform after exposing each first layer, in mm/min.
+
+  ```bash
+  slicer --first-retract-speed 120.0 --mesh model.stl output.goo
+  ```
+</ParamField>
+
+## Model Transformations
+
+These options apply to the most recently specified `--mesh` and must come after the mesh they modify.
+
+<ParamField path="--position" type="Vector3<f32>" default="0, 0, 0">
+  Location of the bottom center of the model bounding box. The origin is the center of the build plate. Format: `x,y,z`
+
+  ```bash
+  slicer --mesh model.stl --position 100,50,0 output.goo
+  ```
+</ParamField>
+
+<ParamField path="--rotation" type="Vector3<f32>" default="0, 0, 0">
+  Rotation of the model in degrees (roll, pitch, yaw). Format: `x,y,z`
+
+  ```bash
+  slicer --mesh model.stl --rotation 45,0,0 output.goo
+  ```
+</ParamField>
+
+<ParamField path="--scale" type="Vector3<f32>" default="1.0, 1.0, 1.0">
+  Scale of the model along the X, Y, and Z axes. Format: `x,y,z`
+
+  ```bash
+  slicer --mesh model.stl --scale 2,2,2 output.goo
+  ```
+</ParamField>
+
+## Preview
+
+<ParamField path="--preview" type="PathBuf">
+  Path to a preview image. Will be scaled as needed and embedded in the output file (for formats that support previews: .goo, .ctb, .nanodlp).
+
+  ```bash
+  slicer --mesh model.stl --preview thumbnail.png output.goo
+  ```
+</ParamField>
+
+## Complex Example
+
+Combining multiple options for a complete workflow:
+
+```bash
+slicer \
+  --platform-resolution 11520,5120 \
+  --platform-size 218.88,122.904,260.0 \
+  --layer-height 0.05 \
+  --first-layers 5 \
+  --transition-layers 3 \
+  --exposure-time 2.5 \
+  --first-exposure-time 35.0 \
+  --lift-distance 6.0 \
+  --lift-speed 80.0 \
+  --retract-speed 180.0 \
+  --preview thumbnail.png \
+  --mesh teapot.stl --position 0,0,0 --scale 2,2,2 --rotation 0,0,45 \
+  --mesh cube.stl --position 100,50,0 --scale 1.5,1.5,1.5 \
+  output.goo
+```
+
+This command:
+- Configures platform for a specific printer
+- Sets layer height to 0.05mm
+- Uses 5 first layers with 3 transition layers
+- Customizes exposure and movement speeds
+- Adds a preview image
+- Loads two models with different transformations
+- Outputs to Elegoo `.goo` format

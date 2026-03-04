@@ -1,0 +1,309 @@
+---
+title: "CLI Usage"
+description: "Complete command-line interface documentation for the standalone slicer binary"
+---
+
+## Overview
+
+While Mslicer is primarily used through the graphical interface, the slicer system can also be used as a standalone command-line application. This allows for automating the slicing of models in bulk or as part of a more complicated build pipeline.
+
+<Note>
+  You can download the `slicer` binary from the [latest GitHub release](https://github.com/connorslade/mslicer/releases/latest).
+</Note>
+
+## Basic Usage
+
+The basic command structure is:
+
+```bash
+slicer [OPTIONS] --mesh <PATH> <OUTPUT>
+```
+
+### Simple Example
+
+Slice a single model:
+
+```bash
+slicer --mesh teapot.stl output.goo
+```
+
+## Multiple Meshes
+
+You can add multiple meshes to a single slice by using the `--mesh` argument more than once:
+
+```bash
+slicer --mesh teapot.stl --mesh frog.stl output.goo
+```
+
+## Model Transformations
+
+Model properties like position, rotation, and scale can be modified using flags followed by 3D vectors in `x,y,z` format. These flags modify the most recently defined mesh.
+
+### Position
+
+Set the location of the bottom center of the model bounding box. The origin is the center of the build plate.
+
+```bash
+slicer --mesh teapot.stl --position 0,0,-0.05 output.goo
+```
+
+### Rotation
+
+Rotate the model in degrees using roll, pitch, and yaw:
+
+```bash
+slicer --mesh teapot.stl --rotation 0,45,0 output.goo
+```
+
+<Info>
+  Rotation values are automatically converted from degrees to radians internally.
+</Info>
+
+### Scale
+
+Scale the model along the X, Y, and Z axes:
+
+```bash
+slicer --mesh teapot.stl --scale 2,2,2 output.goo
+```
+
+### Combined Transformations
+
+You can combine multiple transformation flags for a single mesh:
+
+```bash
+slicer --mesh teapot.stl \
+  --position 0,0,-0.05 \
+  --scale 2,2,2 \
+  --rotation 0,45,0 \
+  output.goo
+```
+
+## Complex Example
+
+Slice multiple meshes with different transformations:
+
+```bash
+slicer \
+  --mesh teapot.stl \
+    --position 0,0,-0.05 \
+    --scale 2,2,2 \
+  --mesh frog.stl \
+    --position 100,0,0 \
+  output.goo
+```
+
+In this example:
+- The teapot is positioned at (0, 0, -0.05) and scaled by 2x
+- The frog is positioned at (100, 0, 0) with default scale
+
+## Platform Configuration
+
+### Resolution
+
+Set the resolution of the printer mask display in pixels:
+
+```bash
+slicer --mesh model.stl \
+  --platform-resolution 11520,5120 \
+  output.goo
+```
+
+**Default:** `11520, 5120`
+
+### Platform Size
+
+Set the size of the printer display/platform in millimeters:
+
+```bash
+slicer --mesh model.stl \
+  --platform-size 218.88,122.904,260.0 \
+  output.goo
+```
+
+**Default:** `218.88, 122.904, 260.0`
+
+### Layer Height
+
+Set the layer height in millimeters:
+
+```bash
+slicer --mesh model.stl \
+  --layer-height 0.05 \
+  output.goo
+```
+
+**Default:** `0.05` mm
+
+## Exposure Configuration
+
+### Regular Layers
+
+```bash
+slicer --mesh model.stl \
+  --exposure-time 3.0 \
+  --lift-distance 5.0 \
+  --lift-speed 65.0 \
+  --retract-speed 150.0 \
+  output.goo
+```
+
+| Flag | Description | Unit | Default |
+|------|-------------|------|--------|
+| `--exposure-time` | Layer exposure time | seconds | 3.0 |
+| `--lift-distance` | Platform lift distance after exposure | mm | 5.0 |
+| `--lift-speed` | Platform lift speed | mm/min | 65.0 |
+| `--retract-speed` | Platform retract (down) speed | mm/min | 150.0 |
+
+### First Layers
+
+First layers use different settings for better bed adhesion:
+
+```bash
+slicer --mesh model.stl \
+  --first-layers 3 \
+  --first-exposure-time 30.0 \
+  --first-lift-distance 5.0 \
+  --first-lift-speed 65.0 \
+  --first-retract-speed 150.0 \
+  output.goo
+```
+
+| Flag | Description | Unit | Default |
+|------|-------------|------|--------|
+| `--first-layers` | Number of first layers | count | 3 |
+| `--first-exposure-time` | First layer exposure time | seconds | 30.0 |
+| `--first-lift-distance` | Platform lift distance for first layers | mm | 5.0 |
+| `--first-lift-speed` | Platform lift speed for first layers | mm/min | 65.0 |
+| `--first-retract-speed` | Platform retract speed for first layers | mm/min | 150.0 |
+
+### Transition Layers
+
+Transition layers interpolate from first layer settings to regular settings:
+
+```bash
+slicer --mesh model.stl \
+  --transition-layers 10 \
+  output.goo
+```
+
+**Default:** `10` layers
+
+## Preview Image
+
+Add a preview image to the output file (will be scaled as needed):
+
+```bash
+slicer --mesh model.stl \
+  --preview thumbnail.png \
+  output.goo
+```
+
+## Output Formats
+
+The slicer supports multiple output formats based on the file extension:
+
+- `.goo` - Elegoo format
+- `.ctb` - Chitubox format
+- `.nanodlp` - NanoDLP format
+
+```bash
+# Elegoo format
+slicer --mesh model.stl output.goo
+
+# Chitubox format
+slicer --mesh model.stl output.ctb
+
+# NanoDLP format
+slicer --mesh model.stl output.nanodlp
+```
+
+## Progress Output
+
+The CLI displays real-time progress during slicing:
+
+```
+Loaded `teapot.stl`. { vert: 12960, face: 25920 }
+Layer: 4523/5200, 87.0%
+Saving 95.2%
+
+Done. Elapsed: 123.4s
+```
+
+### Out of Bounds Warning
+
+If a model extends outside the print volume:
+
+```
+Loaded `large_model.stl`. { vert: 45000, face: 90000 }
+ \ Model extends outside of print volume and will be cut off.
+```
+
+## Complete Example
+
+A production-ready command with all common options:
+
+```bash
+slicer \
+  --platform-resolution 11520,5120 \
+  --platform-size 218.88,122.904,260.0 \
+  --layer-height 0.05 \
+  --first-layers 5 \
+  --transition-layers 10 \
+  --exposure-time 2.5 \
+  --lift-distance 6.0 \
+  --lift-speed 70.0 \
+  --retract-speed 150.0 \
+  --first-exposure-time 35.0 \
+  --first-lift-distance 6.0 \
+  --first-lift-speed 70.0 \
+  --first-retract-speed 150.0 \
+  --preview thumbnail.png \
+  --mesh model1.stl --position 50,50,0 --scale 1.5,1.5,1.5 \
+  --mesh model2.stl --position -50,-50,0 \
+  output.goo
+```
+
+## Supported File Formats
+
+The slicer loads meshes using the `mesh_format` library and supports:
+
+- `.stl` - Stereolithography files
+- `.obj` - Wavefront OBJ files
+
+The format is detected automatically from the file extension.
+
+## Automation Examples
+
+### Batch Processing
+
+Slice multiple models in a loop:
+
+```bash
+#!/bin/bash
+for model in models/*.stl; do
+  basename=$(basename "$model" .stl)
+  slicer --mesh "$model" "output/${basename}.goo"
+done
+```
+
+### Build Pipeline Integration
+
+```bash
+#!/bin/bash
+# Download model
+wget https://example.com/model.stl
+
+# Slice with custom settings
+slicer --mesh model.stl \
+  --exposure-time 2.0 \
+  --first-exposure-time 25.0 \
+  output.goo
+
+# Upload to printer
+cp output.goo /mnt/printer-share/
+```
+
+<Tip>
+  The slicer automatically centers models on the build plate. The position parameter offsets from this centered position.
+</Tip>

@@ -1,0 +1,118 @@
+---
+title: Output Formats Overview
+description: Overview of all supported output formats in Mslicer
+---
+
+Mslicer supports four different output formats, each designed for specific use cases and printer types. This page provides an overview of all formats to help you choose the right one for your needs.
+
+## Supported Formats
+
+### Raster Formats (Bitmap-based)
+
+These formats encode each layer as compressed bitmap data, suitable for standard MSLA resin printers.
+
+<CardGroup cols={3}>
+  <Card title="Chitu CTB" icon="file" href="/formats/chitu-ctb">
+    Encrypted format for Chitu-based printers
+  </Card>
+  <Card title="Elegoo GOO" icon="file" href="/formats/elegoo-goo">
+    Open format for Elegoo printers
+  </Card>
+  <Card title="NanoDLP" icon="file" href="/formats/nanodlp">
+    ZIP-based format with PNG layers
+  </Card>
+</CardGroup>
+
+### Vector Format
+
+<Card title="SVG" icon="vector-square" href="/formats/svg">
+  Vector output for visualization and debugging
+</Card>
+
+## Format Comparison
+
+| Feature | CTB | GOO | NanoDLP | SVG |
+|---------|-----|-----|---------|-----|
+| **File Extension** | `.ctb` | `.goo` | `.nanodlp` | `.svg` |
+| **Encryption** | Yes (AES-256) | No | No | N/A |
+| **Compression** | RLE | RLE | PNG/Deflate | N/A |
+| **Preview Images** | Yes (2 sizes) | Yes (2 sizes) | Yes (1 image) | No |
+| **Per-Layer Settings** | Yes | Yes | Yes | No |
+| **Format Type** | Binary | Binary | ZIP Archive | XML Text |
+| **File Size** | Small | Small | Medium | Variable |
+| **Remote Send** | Yes | Yes | No | No |
+
+## Choosing the Right Format
+
+### For Printing
+
+Select your format based on your printer:
+
+- **Chitu-based printers** (Anycubic, Creality, etc.): Use [CTB](/formats/chitu-ctb)
+- **Elegoo printers** (Mars, Saturn series): Use [GOO](/formats/elegoo-goo)
+- **NanoDLP software**: Use [NanoDLP](/formats/nanodlp)
+- **Custom/DIY printers**: Use [NanoDLP](/formats/nanodlp) (most compatible)
+
+### For Development & Debugging
+
+- **Visualizing slice geometry**: Use [SVG](/formats/svg) to inspect the exact slice polygons
+- **Verifying layer data**: Use [NanoDLP](/formats/nanodlp) to extract readable PNG files
+
+## Format Details
+
+### Run-Length Encoding (RLE)
+
+Both CTB and GOO formats use run-length encoding to compress layer data efficiently. This compression is optimized for the horizontal runs of pixels typical in 3D printing, resulting in very compact file sizes.
+
+The encoding stores:
+- Pixel value (grayscale level)
+- Run length (number of consecutive pixels with the same value)
+
+### Encryption in CTB
+
+The CTB format uses AES-256-CBC encryption with a hardcoded key to protect the format specification. Mslicer implements full encryption support for compatibility with Chitu-based printers.
+
+### ZIP Container Format
+
+NanoDLP uses a ZIP archive containing:
+- JSON metadata files (profile, plate, options)
+- PNG images for each layer
+- 3D preview image
+
+This makes it the most human-readable format and easiest to debug.
+
+## Performance
+
+Mslicer is optimized for high-performance file generation:
+
+- **CTB**: Fast binary encoding with parallel layer processing
+- **GOO**: Fast binary encoding with parallel layer processing
+- **NanoDLP**: Optimized PNG compression for RLE data
+- **SVG**: Lightweight vector output with minimal processing
+
+All formats benefit from Mslicer's parallel slicing engine, often achieving 20× to 120× faster performance compared to other slicers.
+
+## File Extensions
+
+When saving files, Mslicer automatically uses the correct extension:
+
+```bash
+# CTB format
+mslicer model.stl -o output.ctb
+
+# GOO format
+mslicer model.stl -o output.goo
+
+# NanoDLP format
+mslicer model.stl -o output.nanodlp
+
+# SVG format
+mslicer model.stl -o output.svg
+```
+
+The format is automatically detected from the file extension.
+
+## Related Tools
+
+- [UVtools](https://github.com/sn4k3/UVtools) - Post-processing and inspection tool for all raster formats
+- [msla-thumbs](https://github.com/connorslade/msla-thumbs) - KDE thumbnail support for sliced files

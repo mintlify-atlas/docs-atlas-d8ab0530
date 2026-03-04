@@ -1,0 +1,87 @@
+---
+title: Slice Settings
+description: Configure core slicing parameters including platform resolution, size, and slice height
+---
+
+The `SliceConfig` struct defines the fundamental parameters for slicing a 3D model into layers for resin printing. These settings determine the physical characteristics of your print and how the model is converted into printable layers.
+
+## SliceConfig Structure
+
+The main configuration struct is defined in `common/src/slice/config.rs:14` and contains the following fields:
+
+<ParamField path="format" type="Format" default="Format::Ctb">
+  The output file format for sliced files. Supported formats include CTB, GOO, and others. Only `.goo` and `.ctb` files can be sent with the Remote Print module.
+</ParamField>
+
+<ParamField path="platform_resolution" type="Vector2<u32>" default="11520 × 5120">
+  The resolution of the printer's LCD screen in pixels. This determines the maximum detail your printer can produce.
+  
+  **Default**: 11,520 × 5,120 pixels (Elegoo Saturn 3 Ultra)
+</ParamField>
+
+<ParamField path="platform_size" type="Vector3<Milimeters>" default="218.88 × 122.904 × 260.0 mm">
+  The physical dimensions of the build platform in millimeters (width × depth × height).
+  
+  **Default**: 218.88 × 122.904 × 260.0 mm (Elegoo Saturn 3 Ultra)
+  
+  The Z-axis value represents the maximum build height.
+</ParamField>
+
+<ParamField path="slice_height" type="Milimeters" default="0.05 mm">
+  The thickness of each individual layer in millimeters. Also known as layer height.
+  
+  **Default**: 0.05 mm (50 microns)
+  
+  Smaller values produce higher detail but increase print time. Common values range from 0.025mm to 0.1mm.
+</ParamField>
+
+<ParamField path="first_layers" type="u32" default="3">
+  The number of initial layers that use the first exposure configuration. These layers have longer exposure times to ensure proper adhesion to the build plate.
+</ParamField>
+
+<ParamField path="transition_layers" type="u32" default="10">
+  The number of layers that interpolate between first exposure settings and normal exposure settings. This creates a gradual transition to prevent delamination.
+  
+  **Note**: Transition layers are calculated after the first layers and interpolate between the two exposure configurations.
+</ParamField>
+
+## Calculated Properties
+
+The `SliceConfig` provides several computed properties:
+
+### Pixel Area
+
+Calculates the physical area of a single pixel on the LCD screen:
+
+```rust
+pub fn pixel_area(&self) -> SquareMilimeters {
+    let x = self.platform_size.x / self.platform_resolution.x as f32;
+    let y = self.platform_size.y / self.platform_resolution.y as f32;
+    x * y
+}
+```
+
+### Voxel Volume
+
+Calculates the volume of a single voxel (3D pixel):
+
+```rust
+pub fn voxel_volume(&self) -> CubicMilimeters {
+    self.pixel_area() * self.slice_height
+}
+```
+
+### Print Time Estimation
+
+The slicer calculates total print time based on layer count, exposure times, lift/retract distances and speeds. See `print_time()` method in `common/src/slice/config.rs:56` for the full calculation.
+
+## Usage in the UI
+
+In the Mslicer application, these settings can be configured in the Slice Config window. Users can:
+
+- Select from predefined printer presets or use custom values
+- Adjust platform resolution and size (when using custom preset)
+- Configure slice height with metric input
+- Set the number of first layers and transition layers
+
+The UI automatically updates model bounds checking when platform size changes to ensure models fit within the build volume.

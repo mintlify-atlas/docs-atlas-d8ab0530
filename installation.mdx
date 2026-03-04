@@ -1,0 +1,212 @@
+---
+title: Installation
+description: Install mslicer on Linux, Windows, or macOS
+---
+
+Mslicer is available through multiple installation methods depending on your platform and preferences. Choose the option that works best for you.
+
+## Stable releases
+
+### Linux and Windows
+
+The easiest way to get started is to download pre-built binaries from the GitHub Releases page.
+
+<Steps>
+  <Step title="Visit the releases page">
+    Go to the [mslicer Releases](https://github.com/connorslade/mslicer/releases) page on GitHub.
+  </Step>
+  
+  <Step title="Download the latest release">
+    Download the appropriate file for your platform:
+    - **Linux**: `mslicer-linux-x86_64` (or similar)
+    - **Windows**: `mslicer-windows-x86_64.exe` (or similar)
+  </Step>
+  
+  <Step title="Make executable (Linux only)">
+    On Linux, you may need to make the file executable:
+    ```bash
+    chmod +x mslicer-linux-x86_64
+    ```
+  </Step>
+  
+  <Step title="Run mslicer">
+    Launch the application:
+    - **Linux**: `./mslicer-linux-x86_64`
+    - **Windows**: Double-click the `.exe` file
+  </Step>
+</Steps>
+
+## Package managers
+
+### Flathub (Linux)
+
+Mslicer is available on Flathub, making it easy to install and keep updated on most Linux distributions.
+
+<Steps>
+  <Step title="Install from Flathub">
+    If you have Flatpak set up, you can install mslicer directly:
+    ```bash
+    flatpak install flathub com.connorcode.mslicer
+    ```
+  </Step>
+  
+  <Step title="Run mslicer">
+    Launch mslicer using Flatpak:
+    ```bash
+    flatpak run com.connorcode.mslicer
+    ```
+    
+    Or find it in your application menu.
+  </Step>
+</Steps>
+
+<Note>
+If you haven't set up Flatpak yet, visit [flatpak.org](https://flatpak.org/setup/) for instructions specific to your Linux distribution.
+</Note>
+
+### Nixpkgs (NixOS/Nix)
+
+Mslicer is available in the Nixpkgs repository.
+
+<Steps>
+  <Step title="Install via Nix">
+    On NixOS or with the Nix package manager installed:
+    ```bash
+    nix-env -iA nixpkgs.mslicer
+    ```
+  </Step>
+  
+  <Step title="Run mslicer">
+    Simply run:
+    ```bash
+    mslicer
+    ```
+  </Step>
+</Steps>
+
+<Tip>
+You can search for mslicer in the [Nixpkgs package search](https://search.nixos.org/packages?channel=unstable&show=mslicer&size=1&query=mslicer) to see version information and configuration options.
+</Tip>
+
+## Development builds
+
+### GitHub Actions
+
+If you want to try the latest features before they're released, you can download development builds from GitHub Actions.
+
+<Steps>
+  <Step title="Visit the Actions page">
+    Go to the [successful workflow runs](https://github.com/connorslade/mslicer/actions/workflows/build.yml?query=branch%3Amain%20is%3Asuccess) on GitHub.
+  </Step>
+  
+  <Step title="Download the artifact">
+    Open the latest workflow run and download the artifact for your system:
+    - **Windows** artifact
+    - **Linux** artifact
+    - **Mac OS** artifact
+  </Step>
+  
+  <Step title="Extract and run">
+    Extract the downloaded archive and run the mslicer executable.
+  </Step>
+</Steps>
+
+<Warning>
+Development builds are unstable and may contain bugs. Use them for testing only, not for production printing.
+</Warning>
+
+## Building from source
+
+If you prefer to build mslicer yourself or want to contribute to development, you can compile it from source.
+
+### Prerequisites
+
+You'll need the latest stable version of the Rust toolchain installed. If you don't have Rust installed:
+
+<Steps>
+  <Step title="Install Rust">
+    Visit [rustup.rs](https://rustup.rs) and follow the installation instructions for your platform.
+    
+    On Linux or macOS:
+    ```bash
+    curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh
+    ```
+    
+    On Windows, download and run the installer from the website.
+  </Step>
+  
+  <Step title="Verify installation">
+    Check that Rust is installed correctly:
+    ```bash
+    rustc --version
+    cargo --version
+    ```
+  </Step>
+</Steps>
+
+### Building mslicer
+
+<Steps>
+  <Step title="Clone the repository">
+    ```bash
+    git clone https://github.com/connorslade/mslicer
+    cd mslicer
+    ```
+  </Step>
+  
+  <Step title="Build the release binary">
+    Build the mslicer GUI application:
+    ```bash
+    cargo b -r -p mslicer
+    ```
+    
+    The `-r` flag builds in release mode (optimized), and `-p mslicer` specifies the mslicer package.
+  </Step>
+  
+  <Step title="Find the binary">
+    After building, you'll find the executable at:
+    ```
+    target/release/mslicer
+    ```
+    
+    On Windows, it will be:
+    ```
+    target\release\mslicer.exe
+    ```
+  </Step>
+  
+  <Step title="Run mslicer">
+    Execute the binary:
+    ```bash
+    ./target/release/mslicer
+    ```
+  </Step>
+</Steps>
+
+<Tip>
+You can also build the standalone CLI slicer by using `-p slicer` instead of `-p mslicer`. This provides a command-line interface for automated slicing workflows.
+</Tip>
+
+### Building on specific platforms
+
+The build process is the same across all platforms, but you may need platform-specific dependencies:
+
+- **Linux**: Ensure you have development packages for OpenGL and X11/Wayland
+- **Windows**: The Rust toolchain includes everything you need
+- **macOS**: Xcode command-line tools may be required
+
+## Verifying your installation
+
+Once installed, launch mslicer and verify that:
+
+1. The main window opens with the viewport visible
+2. You can load the test model by pressing `Ctrl+T` (or `Cmd+T` on macOS)
+3. The 3D viewport displays the Utah Teapot model
+
+If everything works, you're ready to start slicing!
+
+## Next steps
+
+<Card title="Quickstart guide" icon="rocket" href="/quickstart">
+  Follow the quickstart guide to slice your first model
+</Card>

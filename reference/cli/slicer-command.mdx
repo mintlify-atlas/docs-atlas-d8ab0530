@@ -1,0 +1,125 @@
+---
+title: 'Slicer Command'
+description: 'Main command-line interface for the Mslicer slicer tool'
+---
+
+## Overview
+
+The `slicer` command is the CLI tool for slicing 3D mesh files (STL, OBJ) into layered formats for MSLA 3D printers. It processes mesh files, applies transformations, and outputs files compatible with various printer formats.
+
+## Basic Usage
+
+```bash
+slicer [OPTIONS] --mesh <PATH> <OUTPUT>
+```
+
+## Quick Examples
+
+### Single Model
+
+Slice a single STL file with default settings:
+
+```bash
+slicer --mesh model.stl output.goo
+```
+
+### Multiple Models
+
+Slice multiple models onto the same build plate:
+
+```bash
+slicer \
+  --mesh teapot.stl --position 0,0,-0.05 --scale 2,2,2 \
+  --mesh frog.stl --position 100,0,0 \
+  output.goo
+```
+
+### With Custom Settings
+
+Configure platform size, layer height, and exposure settings:
+
+```bash
+slicer \
+  --platform-resolution 11520,5120 \
+  --platform-size 218.88,122.904,260.0 \
+  --layer-height 0.05 \
+  --exposure-time 3.0 \
+  --first-exposure-time 30.0 \
+  --mesh model.stl \
+  output.ctb
+```
+
+### With Preview Image
+
+Include a preview thumbnail in the output file:
+
+```bash
+slicer --mesh model.stl --preview thumbnail.png output.goo
+```
+
+## Output Formats
+
+The output format is determined by the file extension:
+
+<ParamField path="output" type="PathBuf" required>
+  File to save sliced result to. The extension determines the output format.
+
+  **Supported formats:**
+  - `.goo` - Elegoo format (v3.0)
+  - `.ctb` - ChituBox encrypted format (v5)
+  - `.nanodlp` - NanoDLP format
+  - `.svg` - Vector format (for debugging)
+</ParamField>
+
+## Model Processing
+
+When loading models, the slicer:
+
+1. **Loads the mesh** from STL or OBJ format
+2. **Applies transformations** in this order:
+   - Scale (from `--scale` flag)
+   - Rotation (from `--rotation` flag, in degrees)
+   - Position (from `--position` flag)
+3. **Centers the model** on the build plate
+4. **Converts to printer space** (millimeters to pixels)
+5. **Validates bounds** and warns if the model extends outside the print volume
+
+## Progress Output
+
+The slicer displays real-time progress:
+
+```
+Loaded `model.stl`. { vert: 15000, face: 30000 }
+Layer: 234/500, 46.8%
+Saving 78.5%
+Done. Elapsed: 12.3s
+```
+
+## Model Transformations
+
+Transformations are applied per-model and must follow the corresponding `--mesh` flag:
+
+```bash
+slicer \
+  --mesh model1.stl --scale 2,2,2 --rotation 45,0,0 \
+  --mesh model2.stl --position 100,50,0 \
+  output.goo
+```
+
+In this example:
+- `model1.stl` gets scaled 2x and rotated 45° on the X axis
+- `model2.stl` gets positioned at (100, 50, 0)
+
+## Error Handling
+
+The slicer will display warnings for:
+- **Out of bounds models**: Model extends outside print volume (will be cut off)
+- **Missing files**: Input mesh file not found
+- **Invalid formats**: Unsupported mesh or output format
+- **Invalid parameters**: Malformed vector values or missing required arguments
+
+## See Also
+
+- [CLI Options](/reference/cli/options) - Complete list of all command-line options
+- [Supported Mesh Formats](/reference/formats/supported-meshes) - STL and OBJ format details
+- [Project Files](/reference/formats/project-files) - Native project file format

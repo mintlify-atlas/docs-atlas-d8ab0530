@@ -1,0 +1,265 @@
+---
+title: Model Management
+description: Import, transform, and manage 3D models in your workspace
+---
+
+The Models panel provides complete control over your 3D models, including import, positioning, rotation, scaling, and organization.
+
+## Importing Models
+
+Mslicer supports two common 3D model formats:
+
+<CardGroup cols={2}>
+  <Card title="STL Format" icon="file">
+    Standard Tessellation Language - the most common format for 3D printing
+  </Card>
+  <Card title="OBJ Format" icon="file">
+    Wavefront OBJ - widely supported 3D model format
+  </Card>
+</CardGroup>
+
+### How to Import
+
+There are three ways to import models:
+
+1. **File Menu**: Go to `File → Import Model`
+2. **Drag and Drop**: Drag model files directly into the workspace
+3. **Test Model**: Press `Ctrl+T` to load the built-in Utah Teapot for testing
+
+<Note>
+When a model is loaded, mslicer automatically builds acceleration structures (BVH and half-edge mesh) in the background for faster operations.
+</Note>
+
+## The Models Panel
+
+Each model in your project is listed in the **Models** panel on the left side. Click the arrow button next to a model to expand its properties.
+
+### Model Properties
+
+Each model has the following editable properties:
+
+<AccordionGroup>
+  <Accordion title="Position (X, Y, Z)">
+    The 3D coordinates of the model's center point in millimeters.
+    
+    - Drag the values to adjust position
+    - Use the viewport to visually position models
+    - Z=0 is the build plate surface
+  </Accordion>
+  
+  <Accordion title="Scale (X, Y, Z)">
+    The size multiplier for each axis.
+    
+    - Default scale is 1.0 (original size)
+    - Use the link button to maintain proportions
+    - Locked scale by default ensures proportional scaling
+    
+    **Implementation**: Scale can be locked/unlocked using the link icon, which switches between proportional and independent axis scaling (`models.rs:161`).
+  </Accordion>
+  
+  <Accordion title="Rotation (X, Y, Z)">
+    Rotation angles in degrees for each axis.
+    
+    - Values displayed in degrees (°)
+    - Internally stored as radians
+    - Supports full 360° rotation on all axes
+  </Accordion>
+  
+  <Accordion title="Color">
+    The display color for the model in the viewport.
+    
+    - Click the color swatch to open the color picker
+    - Use "🎲 Random" to assign a random color
+    - Colors are automatically assigned when importing
+  </Accordion>
+</AccordionGroup>
+
+## Model Actions
+
+Click the three-dot menu (⋯) next to a model to access these actions:
+
+### Rename
+Change the model's display name.
+
+```
+🖊 Rename
+```
+
+### Delete
+Remove the model from the project.
+
+```
+🗑 Delete
+```
+
+<Warning>
+Deleting a model cannot be undone. Make sure to save your project before deleting if needed.
+</Warning>
+
+### Duplicate
+Create a copy of the model with identical properties.
+
+```
+📋 Duplicate
+```
+
+### Align to Bed
+Automatically positions the model so its lowest point sits on the build plate (Z=0).
+
+```
+⤓ Align to Bed
+```
+
+**Implementation** (`model.rs:128`):
+```rust
+pub fn align_to_bed(&mut self) {
+    let (bottom, _) = self.mesh.bounds();
+    let pos = self.mesh.position() - Vector3::z() * bottom.z;
+    self.mesh.set_position(pos);
+}
+```
+
+## Model Visibility
+
+Toggle a model's visibility using the eye icon:
+
+- 👁 **Visible** - Model is shown in viewport and included in slicing
+- 👁‍🗨 **Hidden** - Model is hidden but not deleted
+
+<Note>
+Hidden models are **not** included when slicing. Use this to temporarily exclude models without deleting them.
+</Note>
+
+## Model Warnings
+
+Mslicer automatically detects potential issues with your models:
+
+### Non-Manifold Mesh ⚠
+
+```
+This mesh is non-manifold, it may produce unexpected results when sliced.
+Consider running it through a mesh repair tool.
+```
+
+**Causes**:
+- Holes in the mesh
+- Edges shared by more than 2 faces
+- Disconnected geometry
+
+**Detection**: Checked automatically during the manifold analysis task (`models.rs:109`).
+
+### Out of Bounds ⚠
+
+```
+This mesh extends beyond the printer volume and will be cut off.
+```
+
+**When shown**:
+- Model extends beyond X/Y build area
+- Model extends beyond Z (height) limit
+- Model extends below the build plate (Z < 0)
+
+**Implementation** (`model.rs:135`):
+```rust
+pub fn update_oob(&mut self, platform: &Vector3<Milimeters>) {
+    let (min, max) = self.mesh.bounds();
+    let half = platform.map(|x| x.raw()) / 2.0;
+    
+    let oob = (min.x < -half.x || min.y < -half.y || min.z < 0.0)
+        || (max.x > half.x || max.y > half.y || max.z > platform.z.raw());
+    self.warnings.set(MeshWarnings::OutOfBounds, oob);
+}
+```
+
+<Warning>
+Multiple warnings will show a subscript number (⚠₂) indicating how many issues were detected.
+</Warning>
+
+## Transformations
+
+All transformations are tracked in the undo/undo history and can be reverted.
+
+### Position Transform
+
+Models are positioned relative to the center of the build plate:
+- **X/Y Origin**: Center of build plate
+- **Z Origin**: Build plate surface
+- **Units**: Millimeters
+
+### Scale Transform
+
+**Proportional Scaling** (default):
+- All axes scale together
+- Maintains model proportions
+- Indicated by linked chain icon (🔗)
+
+**Independent Scaling**:
+- Each axis scales separately
+- Can distort the model
+- Indicated by broken chain icon (⛓️‍💥)
+
+<Note>
+Changing scale or rotation will invalidate cached overhang detection results, requiring recalculation for support generation.
+</Note>
+
+### Rotation Transform
+
+Rotation is applied in the following order:
+1. X-axis rotation
+2. Y-axis rotation  
+3. Z-axis rotation
+
+Values are displayed in degrees for convenience but stored as radians internally.
+
+## Viewport Navigation
+
+Navigate the 3D viewport to position your models:
+
+| Action | Control |
+|--------|--------|
+| **Orbit** | Left-click + drag |
+| **Pan** | Right-click + drag |
+| **Zoom** | Scroll wheel |
+
+<Note>
+The camera orbits and pans around a target point. Scrolling moves the camera toward or away from this target.
+</Note>
+
+## Multiple Models
+
+Mslicer supports multiple models in a single project:
+
+- All visible models are sliced together
+- Models can overlap (depth tracking prevents cavities)
+- Each model maintains its own color and properties
+- Use **Duplicate** to quickly create copies
+
+## Acceleration Structures
+
+When a model is imported, two acceleration structures are built automatically:
+
+<CardGroup cols={2}>
+  <Card title="BVH (Bounding Volume Hierarchy)" icon="sitemap">
+    Used for ray-mesh intersections, support generation, and viewport picking
+    
+    Built in: `task/acceleration_structures.rs:28`
+  </Card>
+  <Card title="Half-Edge Mesh" icon="project-diagram">
+    Used for topology queries and overhang detection
+    
+    Built in: `task/acceleration_structures.rs:29`
+  </Card>
+</CardGroup>
+
+These structures are built in background tasks and enable fast operations on complex models.
+
+## Related Topics
+
+<CardGroup cols={2}>
+  <Card title="Slicing" href="/features/slicing" icon="layer-group">
+    Slice your models into printable layers
+  </Card>
+  <Card title="Supports" href="/features/supports" icon="grip-lines">
+    Generate supports for overhanging geometry
+  </Card>
+</CardGroup>

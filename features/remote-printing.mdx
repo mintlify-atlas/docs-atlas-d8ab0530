@@ -1,0 +1,401 @@
+---
+title: Remote Printing
+description: Send prints to your network-connected 3D printer via MQTT
+---
+
+The Remote Print module allows you to discover, connect to, and send sliced files directly to network-connected MSLA printers without using a USB drive.
+
+<Note>
+Only Chitu mainboard printers are currently supported. This includes many Elegoo, Creality, and other popular MSLA printers.
+</Note>
+
+## Initialization
+
+Remote Print services are disabled by default for security reasons since they require running network servers.
+
+### First-Time Setup
+
+1. Open the **Remote Print** panel
+2. Click **🌐 Initialize** to start the services
+3. Three network servers are started:
+   - **MQTT Server**: Communicates with printers
+   - **HTTP Server**: Transfers sliced files
+   - **UDP Socket**: Discovers printers
+
+**Implementation** (`remote_print.rs:94`):
+```rust
+pub fn init(&mut self) -> Result<()> {
+    let mqtt_listener = TcpListener::bind("0.0.0.0:0")?;
+    let mqtt_port = mqtt_listener.local_addr()?.port();
+    let mqtt = Mqtt::new();
+    MqttServer::new(mqtt.clone()).start_async(mqtt_listener)?;
+    
+    let http_listener = TcpListener::bind("0.0.0.0:0")?;
+    let http_port = http_listener.local_addr()?.port();
+    let http = HttpServer::new(http_listener, &mqtt);
+    http.start_async();
+    
+    let udp = UdpSocket::bind("0.0.0.0:0")?;
+    udp.set_broadcast(true)?;
+    
+    // Services are now running
+}
+```
+
+<Warning>
+The servers bind to random ports and listen on all network interfaces (0.0.0.0). Ensure your firewall allows the necessary connections.
+</Warning>
+
+### Auto-Initialize
+
+Enable **Initialize remote print at startup** to automatically start services when mslicer launches.
+
+## Printer Discovery
+
+There are two ways to add printers to mslicer:
+
+### Network Scan
+
+**Scan** broadcasts a discovery message to find printers on your network:
+
+1. Click **🌐 Scan**
+2. Mslicer broadcasts an `M99999` command
+3. All compatible printers respond with their status
+4. Printers are automatically added to the list
+
+**Implementation** (`remote_print.rs:306`):
+```rust
+fn scan_for_printers(services: Arc<Services>, printers: Arc<Mutex<Vec<Printer>>>, broadcast: IpAddr) -> Result<()> {
+    services.udp.send_to(b"M99999", SocketAddr::new(broadcast, 3000))?;
+    
+    loop {
+        let (len, addr) = match services.udp.recv_from(&mut buffer) {
+            Ok(data) => data,
+            Err(e) if e.kind() == ErrorKind::TimedOut => break,
+            Err(_) => continue,
+        };
+        
+        // Parse response and connect to printer
+    }
+}
+```
+
+<Note>
+The broadcast address is configurable in the settings. Default is typically 192.168.1.255 for local networks.
+</Note>
+
+### Manual Connection
+
+**Connect** directly if you know the printer's IP address:
+
+1. Enter the printer's IP address (e.g., `192.168.1.233`)
+2. Click **🔌 Connect**
+3. Mslicer attempts to connect and retrieve printer information
+
+**Connection process** (`remote_print.rs:283`):
+```rust
+fn add_printer(services: Arc<Services>, printers: Arc<Mutex<Vec<Printer>>>, address: SocketAddr) -> Result<()> {
+    services.udp.send_to(b"M99999", address)?;
+    
+    let (len, _addr) = services.udp.recv_from(&mut buffer)
+        .context("No response from printer.")?;
+    
+    let response = serde_json::from_str::<Response<FullStatusData>>(&received)
+        .context("Invalid response from printer.")?;
+    
+    connect_printer(services, printers, response, address)?;
+}
+```
+
+## Printer Information
+
+Once connected, mslicer displays detailed printer information:
+
+### Printer Identity
+
+- **Name**: The printer's configured name
+- **Mainboard ID**: Unique identifier for the printer (displayed in monospace)
+- **Firmware Version**: Current firmware version
+
+### Printer Capabilities
+
+- **Resolution**: Display resolution (e.g., 11520x5120 for 12K printers)
+- **Capabilities**: Supported features (varies by printer model)
+- **Last Status**: Timestamp of last status update
+
+**Display** (`remote_print.rs:179`):
+```rust
+Grid::new(format!("printer_{}", attributes.mainboard_id))
+    .show(ui, |ui| {
+        ui.label("Firmware Version");
+        ui.monospace(&attributes.firmware_version);
+        ui.end_row();
+        
+        ui.label("Resolution");
+        ui.monospace(format!("{}x{}", resolution.x, resolution.y));
+        ui.end_row();
+    });
+```
+
+## Sending Files to Printer
+
+There are two ways to send files:
+
+### From Slice Preview
+
+After slicing a model:
+
+1. Click **✉ Send to Printer**
+2. Select a connected printer from the list
+3. Enter a filename
+4. Click **Send**
+
+**Filename handling** (`slice_operation.rs:347`):
+```rust
+let name = mem::take(&mut app.state.working_filename)
+    .replace([' ', '/'], "_")  // Sanitize filename
+    .replace("..", "");         // Remove path traversal
+app.remote_print.upload(&mainboard_id, data.clone(), name, format)
+```
+
+<Note>
+Random characters are automatically added to filenames to ensure uniqueness on the printer.
+</Note>
+
+### From Remote Print Panel
+
+Upload a previously sliced file:
+
+1. Click **⬆ Upload** next to a printer
+2. Select a `.goo` or `.ctb` file
+3. File is read and uploaded to the printer
+
+<Warning>
+Only .goo and .ctb formats are supported for remote printing. SVG and NanoDLP formats cannot be sent remotely.
+</Warning>
+
+## File Transfer Process
+
+The file transfer uses a multi-step process:
+
+1. **Prepare**: File is serialized to bytes if coming from slice preview
+2. **HTTP Server**: File is added to the HTTP server's file list
+3. **MQTT Command**: `UploadFile` command is sent to the printer
+4. **Printer Download**: Printer downloads the file via HTTP
+5. **Completion**: Transfer status is updated
+
+**Implementation** (`remote_print.rs:182`):
+```rust
+pub fn upload(&self, mainboard_id: &str, data: Arc<Vec<u8>>, mut filename: String, format: Format) -> Result<()> {
+    // Add random suffix for uniqueness
+    filename.push('_');
+    filename.push_str(&random_string(8));
+    filename.push('.');
+    filename.push_str(format.extension());
+    
+    // Make file available via HTTP
+    services.http.add_file(&filename, data.clone());
+    
+    // Tell printer to download it
+    services.mqtt.send_command(
+        mainboard_id,
+        UploadFile::new(filename, services.http_port, &data),
+    )?;
+}
+```
+
+## Status Monitoring
+
+Mslicer continuously monitors printer status via MQTT:
+
+### Print Progress
+
+While a print is active:
+
+```
+Printing `model.goo` (Printing)
+ETA: 2h 34m
+[====================  ] 234/1450 layers
+```
+
+**Status types** (`remote_print.rs:89`):
+- `None`: Printer is idle
+- `Printing`: Print in progress
+- `Complete`: Print finished
+
+### File Transfer Progress
+
+```
+Transferring `model.goo`
+[============         ] 45%
+```
+
+Shows real-time progress as the printer downloads the file.
+
+### Print Completion
+
+```
+Finished printing `model.goo` in 2h 31m
+🖨 Print
+```
+
+When transfer completes:
+- Optional desktop notification
+- **Print** button to start the print
+
+**Notification** (`remote_print.rs:131`):
+```rust
+if app.config.alert_print_completion && !app.state.send_print_completion {
+    app.state.send_print_completion = true;
+    Notification::new()
+        .summary("Print Complete")
+        .body(&format!("Printer `{}` has finished printing `{}`.", 
+            attributes.name, print_info.filename))
+        .show()?;
+}
+```
+
+<Note>
+Enable "Send toast on print complete" in settings to receive desktop notifications when prints finish.
+</Note>
+
+## Configuration Options
+
+### Network Settings
+
+**Network Timeout**: How long to wait for printer responses (default: 5s)
+
+```rust
+app.remote_print.set_network_timeout(Duration::from_secs_f32(timeout));
+```
+
+**Broadcast Address**: Network address for printer discovery (default: 192.168.1.255)
+
+### Feature Toggles
+
+<AccordionGroup>
+  <Accordion title="Initialize remote print at startup">
+    Automatically start remote print services when mslicer launches.
+    
+    Useful if you frequently use remote printing.
+  </Accordion>
+  
+  <Accordion title="Send toast on print complete">
+    Show a desktop notification when a print finishes.
+    
+    Requires notification permissions on your system.
+  </Accordion>
+  
+  <Accordion title="Enable HTTP status proxy">
+    Allows external access to printer status via HTTP API.
+    
+    Use with caution as it exposes printer data to your network.
+  </Accordion>
+</AccordionGroup>
+
+## Managing Printers
+
+### Remove Printer
+
+Click **🗑 Delete** to disconnect and remove a printer:
+
+```rust
+pub fn remove_printer(&mut self, index: usize) -> Result<()> {
+    let printer = self.printers.lock().remove(index);
+    services.mqtt.send_command(&printer.mainboard_id, DisconnectCommand)?;
+}
+```
+
+### Printer List Persistence
+
+Printers are automatically saved and restored between sessions (implementation in app configuration).
+
+## Shutdown
+
+Click **⊗ Disable Remote Print** to shut down all services:
+
+```rust
+pub fn shutdown(&mut self) {
+    if let Some(services) = self.services.take() {
+        services.http.shutdown();
+        services.mqtt.shutdown();
+    }
+}
+```
+
+<Warning>
+Shutting down remote print will disconnect all printers. Any in-progress transfers will be interrupted.
+</Warning>
+
+## Troubleshooting
+
+<AccordionGroup>
+  <Accordion title="Printer not responding">
+    **Possible causes:**
+    - Printer is not on the same network
+    - Firewall blocking UDP port 3000
+    - Printer is powered off or in standby
+    
+    **Solutions:**
+    - Verify network connectivity
+    - Try manual connection with printer's IP
+    - Increase network timeout in settings
+  </Accordion>
+  
+  <Accordion title="File transfer fails">
+    **Possible causes:**
+    - Network interruption during transfer
+    - Insufficient space on printer
+    - Incompatible file format
+    
+    **Solutions:**
+    - Check printer storage capacity
+    - Use .goo or .ctb format only
+    - Try uploading a smaller test file
+  </Accordion>
+  
+  <Accordion title="Cannot initialize services">
+    **Possible causes:**
+    - Required ports are already in use
+    - Insufficient permissions
+    - Firewall blocking server creation
+    
+    **Solutions:**
+    - Close other applications using network ports
+    - Run mslicer with appropriate permissions
+    - Check firewall settings
+  </Accordion>
+</AccordionGroup>
+
+## Network Architecture
+
+The remote print system uses three network components:
+
+<CardGroup cols={3}>
+  <Card title="UDP Socket" icon="broadcast-tower">
+    Port 3000 (printer)
+    
+    Discovers printers and sends connection commands
+  </Card>
+  <Card title="MQTT Server" icon="exchange-alt">
+    Random port
+    
+    Bi-directional communication with printers
+  </Card>
+  <Card title="HTTP Server" icon="server">
+    Random port
+    
+    Serves sliced files for printer download
+  </Card>
+</CardGroup>
+
+## Related Topics
+
+<CardGroup cols={2}>
+  <Card title="Slice Preview" href="/features/slice-preview" icon="eye">
+    Preview and verify slices before sending
+  </Card>
+  <Card title="Slicing" href="/features/slicing" icon="layer-group">
+    Learn about the slicing engine
+  </Card>
+</CardGroup>

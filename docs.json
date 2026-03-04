@@ -1,122 +1,99 @@
 {
   "$schema": "https://mintlify.com/docs.json",
-  "theme": "mint",
-  "name": "Mint Starter Kit",
+  "name": "Mslicer",
+  "theme": "aspen",
   "colors": {
-    "primary": "#16A34A",
-    "light": "#07C983",
-    "dark": "#15803D"
+    "primary": "#eac926",
+    "light": "#997c29",
+    "dark": "#544e41"
   },
-  "favicon": "/favicon.svg",
+  "favicon": "https://media.brand.dev/c5355bdf-36d5-4abd-998e-e44acb25adf2.svg",
+  "logo": {
+    "light": "https://media.brand.dev/c5355bdf-36d5-4abd-998e-e44acb25adf2.svg",
+    "dark": "https://media.brand.dev/c5355bdf-36d5-4abd-998e-e44acb25adf2.svg"
+  },
+  "navbar": {
+    "primary": {
+      "type": "github",
+      "href": "https://github.com/connorslade/mslicer"
+    }
+  },
+  "footer": {
+    "socials": {
+      "github": "https://github.com/connorslade/mslicer"
+    }
+  },
   "navigation": {
     "tabs": [
       {
-        "tab": "Guides",
+        "tab": "Documentation",
         "groups": [
           {
-            "group": "Getting started",
+            "group": "Get Started",
             "pages": [
-              "index",
-              "quickstart",
-              "development"
+              "introduction",
+              "installation",
+              "quickstart"
             ]
           },
           {
-            "group": "Customization",
+            "group": "Core Features",
             "pages": [
-              "essentials/settings",
-              "essentials/navigation"
+              "features/slicing",
+              "features/model-management",
+              "features/slice-preview",
+              "features/supports",
+              "features/remote-printing"
             ]
           },
           {
-            "group": "Writing content",
+            "group": "Configuration",
             "pages": [
-              "essentials/markdown",
-              "essentials/code",
-              "essentials/images",
-              "essentials/reusable-snippets"
+              "config/slice-settings",
+              "config/printer-presets",
+              "config/exposure-settings"
             ]
           },
           {
-            "group": "AI tools",
+            "group": "Output Formats",
             "pages": [
-              "ai-tools/cursor",
-              "ai-tools/claude-code",
-              "ai-tools/windsurf"
+              "formats/overview",
+              "formats/chitu-ctb",
+              "formats/elegoo-goo",
+              "formats/nanodlp",
+              "formats/svg"
+            ]
+          },
+          {
+            "group": "Advanced",
+            "pages": [
+              "advanced/cli-usage",
+              "advanced/post-processing",
+              "advanced/island-detection",
+              "advanced/remote-api"
             ]
           }
         ]
       },
       {
-        "tab": "API reference",
+        "tab": "Reference",
         "groups": [
           {
-            "group": "API documentation",
+            "group": "CLI Reference",
             "pages": [
-              "api-reference/introduction"
+              "reference/cli/slicer-command",
+              "reference/cli/options"
             ]
           },
           {
-            "group": "Endpoint examples",
+            "group": "File Formats",
             "pages": [
-              "api-reference/endpoint/get",
-              "api-reference/endpoint/create",
-              "api-reference/endpoint/delete",
-              "api-reference/endpoint/webhook"
+              "reference/formats/project-files",
+              "reference/formats/supported-meshes"
             ]
           }
         ]
       }
-    ],
-    "global": {
-      "anchors": [
-        {
-          "anchor": "Documentation",
-          "href": "https://mintlify.com/docs",
-          "icon": "book-open-cover"
-        },
-        {
-          "anchor": "Blog",
-          "href": "https://mintlify.com/blog",
-          "icon": "newspaper"
-        }
-      ]
-    }
-  },
-  "logo": {
-    "light": "/logo/light.svg",
-    "dark": "/logo/dark.svg"
-  },
-  "navbar": {
-    "links": [
-      {
-        "label": "Support",
-        "href": "mailto:hi@mintlify.com"
-      }
-    ],
-    "primary": {
-      "type": "button",
-      "label": "Dashboard",
-      "href": "https://dashboard.mintlify.com"
-    }
-  },
-  "contextual": {
-    "options": [
-     "copy",
-     "view",
-     "chatgpt",
-     "claude",
-     "perplexity",
-     "mcp",
-     "cursor",
-     "vscode"
-   ]
-  },
-  "footer": {
-    "socials": {
-      "x": "https://x.com/mintlify",
-      "github": "https://github.com/mintlify",
-      "linkedin": "https://linkedin.com/company/mintlify"
-    }
+    ]
   }
 }

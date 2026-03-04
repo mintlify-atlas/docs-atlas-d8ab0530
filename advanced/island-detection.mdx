@@ -1,0 +1,351 @@
+---
+title: "Island Detection"
+description: "Understanding the island detection algorithm and how to interpret results"
+---
+
+## Overview
+
+Island detection identifies areas of a layer that have no support from the layer below. These "islands" can cause print failures because they require the resin to cure without anything beneath them, often leading to:
+
+- Failed prints with floating geometry
+- Delamination between layers
+- Resin curing in the vat instead of on the build plate
+- Wasted time and materials
+
+## How Island Detection Works
+
+The island detection algorithm uses a sophisticated clustering approach to identify unsupported regions:
+
+### Algorithm Steps
+
+<Steps>
+  <Step title="Layer Comparison">
+    Compare each layer with the layer directly below it. The algorithm processes layers sequentially, maintaining both the current and previous layer data.
+    
+    ```rust
+    // From island_detection.rs:21-25
+    let mut prev = Vec::new();
+    let mut curr = condensed_layer_rows(file, 0);
+    
+    for layer in 1..info.layers as usize {
+        mem::swap(&mut prev, &mut curr);
+        curr = condensed_layer_rows(file, layer);
+    }
+    ```
+  </Step>
+  
+  <Step title="Row-Based Clustering">
+    Convert layer data into a mask of non-zero voxels, split by rows. Group areas of adjacent pixels within the current layer using cluster analysis.
+    
+    ```rust
+    // From island_detection.rs:28-31
+    let mut clusters = Clusters::default();
+    for row in 1..rows as usize {
+        rle::bits::cluster_row_adjacency(&mut clusters, &curr, row - 1, row);
+    }
+    ```
+    
+    This creates clusters of connected pixels that represent continuous geometry.
+  </Step>
+  
+  <Step title="Support Detection">
+    For each cluster, check if any run in that cluster overlaps with geometry in the previous layer.
+    
+    ```rust
+    // From island_detection.rs:35-40
+    for (_, runs) in clusters.clusters() {
+        if runs.iter().any(|run| row_overlaps(&prev, run)) {
+            continue; // Has support, not an island
+        }
+        island_runs.extend(runs.iter());
+    }
+    ```
+    
+    If no overlap is found, the cluster is marked as an island.
+  </Step>
+  
+  <Step title="Island Recording">
+    Record island locations using run-length encoding for efficient storage.
+    
+    ```rust
+    // From island_detection.rs:54-57
+    let start = run.row as u64 * width as u64 + run.position;
+    layer.push(start - pos);  // Offset from previous position
+    layer.push(run.size);     // Size of island run
+    pos = start + run.size;
+    ```
+  </Step>
+</Steps>
+
+## Data Structures
+
+### Layer Representation
+
+Layers are converted to a condensed row format for efficient processing:
+
+```rust
+// From island_detection.rs:67-71
+fn condensed_layer_rows(file: &DynSlicedFile, layer: usize) -> Vec<Vec<u64>> {
+    let layer = rle::bits::from_runs(&file.runs(layer).collect::<Vec<_>>());
+    let size = file.info().resolution;
+    rle::bits::chunks(&layer, size.x as u64)
+}
+```
+
+This creates a 2D vector where:
+- First dimension: row index
+- Second dimension: run-length encoded pixel data for that row
+
+### Cluster Runs
+
+Clusters are tracked using `ClusterRun` structures containing:
+- `row`: The row index
+- `index`: Position within the row
+- `position`: Absolute pixel position
+- `size`: Number of pixels in the run
+
+## Overlap Detection
+
+The `row_overlaps` function determines if a run has support:
+
+```rust
+// From island_detection.rs:73-88
+fn row_overlaps(rows: &[Vec<u64>], run: &ClusterRun) -> bool {
+    let mut prev_pos = 0;
+    for (i, &x) in rows[run.row].iter().enumerate() {
+        if i % 2 != 0  // Check only the "run" positions (not gaps)
+            && x > 0
+            && run.position <= (prev_pos + x)
+            && (run.position + run.size) >= prev_pos
+        {
+            return true;  // Has support
+        }
+        prev_pos += x;
+    }
+    false  // No support found - it's an island
+}
+```
+
+### Overlap Logic
+
+Two runs overlap if:
+1. The current run starts before or within the previous run ends: `run.position <= (prev_pos + x)`
+2. The current run ends after or within the previous run starts: `(run.position + run.size) >= prev_pos`
+
+## Cascade Mode
+
+The algorithm supports an optional cascade mode:
+
+```rust
+// From island_detection.rs:50-52
+if cascade {
+    curr[run.row][run.index - 1] += mem::take(&mut curr[run.row][run.index]);
+}
+```
+
+When enabled, island pixels are merged into the previous cluster, effectively "cascading" unsupported geometry into supported regions. This is useful for:
+- Visualization purposes
+- Automatic support generation
+- Understanding support requirements
+
+## Output Format
+
+The function returns `Vec<Vec<u64>>` where:
+- Outer vector: One entry per layer (starting from layer 1)
+- Inner vector: Run-length encoded island positions
+
+### Encoding Scheme
+
+For each island run, two values are stored:
+1. **Offset**: Distance from the previous position
+2. **Size**: Number of pixels in the island run
+
+Example:
+```
+[10, 5, 3, 8, ...]
+  ↓   ↓  ↓  ↓
+  │   │  │  └─ Island of 8 pixels
+  │   │  └──── 3 pixels from end of previous island
+  │   └─────── Island of 5 pixels  
+  └─────────── 10 pixels from start of layer
+```
+
+## Performance Characteristics
+
+### Time Complexity
+
+- **Per Layer**: O(pixels × rows) for clustering
+- **Overlap Check**: O(clusters × runs_per_cluster × runs_in_prev_layer)
+- **Overall**: Linear with number of layers and complexity of geometry
+
+### Space Complexity
+
+- **Layer Storage**: Two layers in memory at once (current + previous)
+- **Cluster Data**: Temporary storage for cluster analysis
+- **Output**: Compressed run-length encoding
+
+### Progress Tracking
+
+```rust
+// From island_detection.rs:15
+progress.set_total(info.layers as u64);
+
+// From island_detection.rs:23
+progress.set_complete(layer as u64);
+
+// From island_detection.rs:63
+progress.set_finished();
+```
+
+The progress system provides real-time feedback during island detection.
+
+## Interpreting Results
+
+### No Islands
+
+```rust
+vec![vec![], vec![], vec![], ...]
+```
+
+Empty vectors for each layer indicate no islands were detected. The model has full support throughout.
+
+### Islands Detected
+
+```rust
+vec![
+    vec![],              // Layer 0: No islands
+    vec![100, 50, 20, 30], // Layer 1: Two islands
+    vec![],              // Layer 2: No islands
+    vec![500, 10],       // Layer 3: One island
+]
+```
+
+Non-empty vectors indicate islands:
+- Layer 1: Island of 50 pixels at position 100, island of 30 pixels at position 170
+- Layer 3: Island of 10 pixels at position 500
+
+## Use Cases
+
+<CardGroup cols={2}>
+  <Card title="Pre-Print Validation" icon="check-circle">
+    Run island detection before starting a print to validate that:
+    - All geometry has proper support
+    - No floating islands exist
+    - The model is printable as-is
+  </Card>
+  
+  <Card title="Automatic Support Generation" icon="diagram-project">
+    Use detected islands to:
+    - Generate support structures automatically
+    - Place supports only where needed
+    - Optimize support placement
+  </Card>
+  
+  <Card title="Model Analysis" icon="magnifying-glass">
+    Analyze models to:
+    - Identify problematic geometry
+    - Understand support requirements
+    - Compare different orientations
+  </Card>
+  
+  <Card title="Quality Control" icon="shield-check">
+    In production environments:
+    - Reject models with islands
+    - Flag prints for manual review
+    - Ensure print success rate
+  </Card>
+</CardGroup>
+
+## Integration Example
+
+Here's how island detection is typically used:
+
+```rust
+use common::progress::Progress;
+
+// Create progress tracker
+let progress = Progress::new();
+
+// Run island detection
+let islands = detect_islands(
+    &sliced_file,
+    progress,
+    false  // cascade mode off
+);
+
+// Check for islands
+let has_islands = islands.iter().any(|layer| !layer.is_empty());
+
+if has_islands {
+    println!("Warning: Islands detected in {} layers", 
+        islands.iter().filter(|l| !l.is_empty()).count());
+    
+    // Handle islands (add supports, warn user, etc.)
+} else {
+    println!("No islands detected. Model is fully supported.");
+}
+```
+
+## Optimization Techniques
+
+### Run-Length Encoding
+
+The algorithm uses RLE extensively to reduce memory usage and improve cache performance:
+
+```rust
+use common::container::rle;
+
+// Convert to RLE format
+let layer = rle::bits::from_runs(&file.runs(layer).collect::<Vec<_>>());
+
+// Split into rows
+let rows = rle::bits::chunks(&layer, width);
+```
+
+### Memory Efficiency
+
+Only two layers are kept in memory at once:
+
+```rust
+mem::swap(&mut prev, &mut curr);
+```
+
+This swaps ownership instead of copying data, maintaining O(1) memory usage per iteration.
+
+## Limitations
+
+<Warning>
+  The island detection algorithm has some limitations:
+  
+  1. **Direct Overlap Only**: Only checks the layer immediately below. Overhangs with gradual support buildup may not be detected.
+  
+  2. **No Support Structure Analysis**: Doesn't account for pre-existing support structures in the model.
+  
+  3. **Binary Detection**: Doesn't measure support quality, only presence/absence.
+  
+  4. **No Overhang Angle**: Doesn't consider printable overhang angles (typically 45°).
+</Warning>
+
+## Best Practices
+
+<AccordionGroup>
+  <Accordion title="Run Early in Pipeline">
+    Execute island detection early in your slicing pipeline to catch issues before committing to a print.
+  </Accordion>
+  
+  <Accordion title="Use with Orientation Tools">
+    Combine with model orientation optimization to find the best print angle with minimal islands.
+  </Accordion>
+  
+  <Accordion title="Consider Cascade Mode">
+    Enable cascade mode for visualization purposes, but use standard mode for accurate detection.
+  </Accordion>
+  
+  <Accordion title="Log Results">
+    Keep records of island detection results for quality control and process improvement.
+  </Accordion>
+</AccordionGroup>
+
+<Tip>
+  For models with known islands, consider rotating the model to a different angle or adding manual supports before slicing.
+</Tip>

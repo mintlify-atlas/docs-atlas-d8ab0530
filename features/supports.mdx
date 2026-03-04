@@ -1,0 +1,265 @@
+---
+title: Support Generation
+description: Automatic and manual support generation for overhanging geometry
+---
+
+Mslicer includes experimental support generation features for creating supports on overhanging parts of your models.
+
+<Warning>
+The automatic support generator in mslicer is still very early in development and not usable for most models. For production prints, consider using [Runebrace](https://www.tarabella.it/Runebrace) to place supports before slicing.
+</Warning>
+
+## Overhang Detection
+
+Mslicer can detect areas of your model that overhang and may require support.
+
+### Visualize Overhanging Faces
+
+Enable overhang visualization to highlight problematic areas:
+
+```
+☑ Visualize Overhanging Faces
+```
+
+**Overhang Angle**: Adjust the threshold angle (in degrees) for what's considered an overhang:
+- Lower values: More conservative, marks more areas as overhangs
+- Higher values: Less conservative, only marks extreme overhangs
+- Default: Configurable per-printer
+
+<Note>
+The overhang angle is measured from vertical. A 45° overhang means the surface is tilted 45° from vertical.
+</Note>
+
+### Detect Overhanging Points
+
+For per-model overhang detection:
+
+1. Click **Detect Overhanging Points**
+2. Select a model from the list
+3. Mslicer analyzes the mesh topology using the half-edge structure
+4. Points that are lower than all their neighbors are marked
+
+**Implementation** (`model.rs:102`):
+```rust
+pub fn find_overhangs(&mut self) {
+    self.overhangs = Some(detect_point_overhangs(
+        &self.mesh,
+        self.half_edge.as_ref().unwrap(),
+        |origin, _, _| origin.origin_vertex,
+    ));
+}
+```
+
+<CardGroup cols={2}>
+  <Card title="Uses Half-Edge Mesh" icon="project-diagram">
+    Topology analysis requires the half-edge data structure built during import
+  </Card>
+  <Card title="Vertex-Level Detection" icon="dot-circle">
+    Detects individual vertices that need support rather than entire faces
+  </Card>
+</CardGroup>
+
+## Manual Support Placement
+
+Place supports manually by clicking on your model in the viewport.
+
+### Enable Manual Mode
+
+```
+☑ Support Placement
+```
+
+When enabled:
+- Hover over your model in the viewport
+- Click to place a support at that location
+- Support is automatically routed from the click point to the build plate
+
+### Support Routing
+
+Manual supports use ray casting and the BVH acceleration structure to route intelligently:
+
+**Implementation** (`supports.rs:161`):
+```rust
+fn manual_support_placement(app: &mut App) {
+    let (pos, dir) = app.camera.hovered_ray(workspace.aspect, workspace.uv);
+    
+    // Find intersection with model
+    let intersection = bvh.intersect_ray(
+        &model.mesh,
+        model.mesh.inv_transform(&pos),
+        model.mesh.inv_transform_normal(&dir),
+    );
+    
+    // Route support to build plate
+    if let Some(lines) = route_support(&model.mesh, bvh, start) {
+        // Generate support geometry
+    }
+}
+```
+
+<Note>
+Manual supports are previewed in real-time as you hover over the model. Click to confirm placement.
+</Note>
+
+## Automatic Support Generation
+
+Experimental automatic support generation is available but not recommended for production use.
+
+### Line Support Generator
+
+The line support system generates simple cylindrical supports:
+
+1. Click **Generate** and select a model
+2. Or click **Generate All** to process all models
+3. Supports are created as a new mesh object
+4. The new mesh is named "Supports" or "Supports [model name]"
+
+### Support Configuration
+
+<AccordionGroup>
+  <Accordion title="Overhang Detection Settings">
+    **Min Angle**: Minimum angle from vertical to be considered an overhang
+    
+    **Face Support Spacing**: Distance between support points on overhanging faces
+  </Accordion>
+  
+  <Accordion title="Support Generation Settings">
+    **Support Radius**: Diameter of the support pillar (default: 1.0mm)
+    
+    **Arm Height**: Height of the support arm connecting to the model
+    
+    **Base Radius**: Diameter of the support base on the build plate
+    
+    **Base Height**: Height of the support base
+    
+    **Support Precision**: Number of vertices in support cylinders (affects smoothness)
+  </Accordion>
+</AccordionGroup>
+
+**Implementation** (`supports.rs:85`):
+```rust
+let generator = LineSupportGenerator::new(
+    &app.state.line_support_config,
+    app.project.slice_config.platform_size.map(|x| x.convert()),
+);
+
+let (supports, debug) = generator.generate_line_supports(&mesh.mesh, half_edge);
+```
+
+<Warning>
+Automatic support generation is experimental. Always inspect generated supports carefully before printing.
+</Warning>
+
+## Support Geometry
+
+Supports are generated as mesh objects consisting of:
+
+### Cylinders
+- **Vertical supports**: From support point to build plate
+- **Arms**: Angled connections to the model surface
+- **Segments**: Multiple sections for complex routing
+
+### Spheres
+- **Connection points**: Where support segments join
+- **Tips**: Small spheres at model contact points
+
+**Precision** (`supports.rs:45`):
+```rust
+let (r, p) = (1.0, 10); // radius, precision (vertices)
+builder.add_cylinder((point, start), (0.2, r), p);
+builder.add_sphere(point, 0.2, p);
+```
+
+<Note>
+Higher precision values create smoother supports but increase triangle count and slicing time.
+</Note>
+
+## Support Routing Algorithm
+
+The support routing system attempts to:
+
+1. **Start** from the support point on the model
+2. **Route** downward while avoiding the model geometry
+3. **Check** for collisions using BVH ray casting
+4. **Adjust** path when collisions are detected
+5. **Terminate** at the build plate surface
+
+**Ray casting** (`supports.rs:185`):
+```rust
+let start = intersection.position + normal * 0.1;
+if let Some(lines) = route_support(&model.mesh, bvh, start) {
+    // lines contains the routed path segments
+}
+```
+
+## Working with Generated Supports
+
+Supports are added as regular model objects, so you can:
+
+- **View** them in the viewport with a random color
+- **Hide** them if you want to inspect the model alone
+- **Delete** them if you want to regenerate
+- **Edit** their position/scale like any model
+- **Export** them along with your model when slicing
+
+<Note>
+Generated supports are sliced together with your models when you slice the project.
+</Note>
+
+## Acceleration Structures
+
+Support generation relies on the acceleration structures built when models are imported:
+
+<CardGroup cols={2}>
+  <Card title="BVH" icon="sitemap">
+    Used for ray-mesh intersections when routing supports around the model
+    
+    Required for: Manual placement, automatic routing
+  </Card>
+  <Card title="Half-Edge Mesh" icon="project-diagram">
+    Used for topology queries when detecting overhanging geometry
+    
+    Required for: Overhang detection, neighbor analysis
+  </Card>
+</CardGroup>
+
+## Limitations
+
+<Warning>
+**Current limitations of the support system:**
+
+- Automatic generation is experimental and unreliable
+- No support for hollowed models
+- No support tree structures (only straight lines)
+- Limited collision avoidance
+- No support removal optimization
+</Warning>
+
+## Recommended Workflow
+
+For production prints:
+
+1. Model and orient your part in CAD software
+2. Export as STL/OBJ
+3. Use [Runebrace](https://www.tarabella.it/Runebrace) for support placement
+4. Import the supported model into mslicer
+5. Slice and print
+
+For experimental/testing:
+
+1. Import your model into mslicer
+2. Enable **Visualize Overhanging Faces**
+3. Try **Manual Support Placement** for critical areas
+4. Use **Generate All** for automatic supports
+5. Inspect carefully before printing
+
+## Related Topics
+
+<CardGroup cols={2}>
+  <Card title="Model Management" href="/features/model-management" icon="cube">
+    Learn about model transformations and properties
+  </Card>
+  <Card title="Slicing" href="/features/slicing" icon="layer-group">
+    Slice your models with supports into printable layers
+  </Card>
+</CardGroup>

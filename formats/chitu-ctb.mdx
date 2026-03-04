@@ -1,0 +1,264 @@
+---
+title: Chitu CTB Format
+description: Technical details of the Chitu CTB encrypted format used by Anycubic, Creality, and other printers
+---
+
+The Chitu CTB format (`.ctb`) is an encrypted binary format used by printers with Chitu controller boards. This format is commonly found in Anycubic, Creality, Phrozen, and many other MSLA resin printers.
+
+## Overview
+
+CTB stands for "ChiTu Box" format, version 5. It uses AES-256 encryption to protect the format specification and includes comprehensive metadata for print settings.
+
+### Key Features
+
+- **Format Version**: V5 (latest)
+- **Encryption**: AES-256-CBC with hardcoded key and IV
+- **Compression**: Custom run-length encoding (RLE)
+- **Layer Data**: XOR-encrypted RLE compressed bitmaps
+- **Preview Images**: Two sizes (large and small thumbnails)
+- **Checksum**: SHA-256 verification for data integrity
+
+## File Structure
+
+### Header
+
+The file begins with a magic number and version information:
+
+```
+Magic: 0x12FD0107
+Version: 5 (FORMAT_VERSION)
+```
+
+### Main Sections
+
+1. **Settings Section** (encrypted)
+   - Print parameters
+   - Layer configuration
+   - Resin settings
+   - Machine information
+
+2. **Signature Section** (encrypted)
+   - SHA-256 checksum verification
+   - Encrypted signature data
+
+3. **Preview Images**
+   - Large preview (variable size)
+   - Small preview (variable size)
+   - RGB565 format
+
+4. **Layer Data**
+   - XOR-encrypted RLE compressed pixels
+   - Per-layer positioning information
+   - Page-based storage (4GB pages)
+
+## Encryption Details
+
+### AES-256-CBC
+
+The CTB format uses AES-256 in CBC mode with a fixed key and initialization vector:
+
+```rust
+// From format/ctb_format/src/crypto.rs
+const ENCRYPT_KEY: &[u8; 32] = [
+    0xD0, 0x5B, 0x8E, 0x33, 0x71, 0xDE, 0x3D, 0x1A,
+    0xE5, 0x4F, 0x22, 0xDD, 0xDF, 0x5B, 0xFD, 0x94,
+    0xAB, 0x5D, 0x64, 0x3A, 0x9D, 0x7E, 0xBF, 0xAF,
+    0x42, 0x03, 0xF3, 0x10, 0xD8, 0x52, 0x2A, 0xEA
+];
+
+const ENCRYPT_IV: &[u8; 16] = [
+    0x0F, 0x01, 0x0A, 0x05, 0x05, 0x0B, 0x06, 0x07,
+    0x08, 0x06, 0x0A, 0x0C, 0x0C, 0x0D, 0x09, 0x0F
+];
+```
+
+These values are used to encrypt/decrypt the settings section and signature data.
+
+### XOR Layer Encryption
+
+Layer data is additionally XOR-encrypted with a key stored in the file (default: `0x67`):
+
+```rust
+const DEFAULT_XOR_KEY: u32 = 0x67;
+```
+
+## Run-Length Encoding
+
+CTB uses a sophisticated RLE scheme optimized for horizontal pixel runs:
+
+### Encoding Format
+
+```
+[value_byte] [length_bytes...]
+```
+
+- **Bit 7 of value**: Set if run length > 1
+- **Bits 0-6 of value**: Grayscale value (right-shifted)
+- **Length encoding**: Variable-length (1-4 bytes)
+
+### Length Encoding
+
+| Length Range | Bytes | Format |
+|--------------|-------|--------|
+| 1 | 0 | (implicit from bit 7 = 0) |
+| 2-127 | 1 | `0xxxxxxx` |
+| 128-16,383 | 2 | `10xxxxxx xxxxxxxx` |
+| 16,384-2,097,151 | 3 | `110xxxxx xxxxxxxx xxxxxxxx` |
+| 2,097,152+ | 4 | `1110xxxx xxxxxxxx xxxxxxxx xxxxxxxx` |
+
+### Example
+
+From `format/ctb_format/src/layer_coding.rs:76-100`:
+
+```rust
+pub fn add_run(&mut self, length: u64, value: u8) {
+    if length == 0 { return; }
+    
+    self.data.push((value >> 1) | (0x80 * (length > 1) as u8));
+    
+    if length <= 1 {
+        // pass
+    } else if length <= 0x7F {
+        self.data.push(length as u8);
+    } else if length <= 0x3FFF {
+        self.data.push((length >> 8) as u8 | 0x80);
+        self.data.push(length as u8);
+    } else if length <= 0x1FFFFF {
+        self.data.push((length >> 16) as u8 | 0xc0);
+        self.data.push((length >> 8) as u8);
+        self.data.push(length as u8);
+    } else if length <= 0xFFFFFFF {
+        self.data.push((length >> 24) as u8 | 0xe0);
+        self.data.push((length >> 16) as u8);
+        self.data.push((length >> 8) as u8);
+        self.data.push(length as u8);
+    }
+}
+```
+
+## Print Parameters
+
+The CTB format stores extensive print configuration:
+
+### Platform Settings
+- Platform size (X, Y, Z) in millimeters
+- Platform resolution (X, Y) in pixels
+- Machine name
+- Projector type
+
+### Layer Settings
+- Layer height
+- Exposure time (bottom and regular)
+- Light-off delay (bottom and regular)
+- Bottom layer count
+- Transition layer count
+
+### Movement Settings
+- Lift height (primary and secondary)
+- Lift speed (primary and secondary)
+- Retract height (primary and secondary)
+- Retract speed (primary and secondary)
+- Rest times (various stages)
+
+### Light Settings
+- Light PWM (0-255, bottom and regular)
+- Per-layer settings flag
+- Anti-aliasing level
+
+## Resin Parameters
+
+Stored in a separate section (from `format/ctb_format/src/resin.rs`):
+
+```rust
+pub struct ResinParameters {
+    pub resin_color: Vector4<f32>,    // RGBA color
+    pub machine_name: String,
+    pub resin_type: String,           // e.g., "Normal"
+    pub resin_name: String,           // e.g., "Standard"
+    pub resin_density: f32,           // g/cm³
+}
+```
+
+## Compatibility
+
+### Supported Printers
+
+The CTB format is used by a wide range of printers:
+
+- **Anycubic**: Photon Mono, Mono X, Mono SE, Photon Ultra
+- **Creality**: HALOT series, LD-002H
+- **Phrozen**: Sonic Mini 4K, Sonic Mighty 4K
+- **Elegoo**: Some models support CTB in addition to GOO
+- **Voxelab**: Proxima
+- **QIDI**: Shadow series
+
+<Warning>
+  The CTB format requires exact resolution matching. The sliced file will not print if the printer's resolution does not match the file's resolution settings.
+</Warning>
+
+## Disclaimer
+
+The CTB format includes a mandatory disclaimer string:
+
+```
+"Layout and record format for the ctb and cbddlp file types are the 
+copyrighted programs or codes of CBD Technology (China) Inc.. The 
+Customer or User shall not in any manner reproduce, distribute, modify, 
+decompile, disassemble, decrypt, extract, reverse engineer, lease, assign, 
+or sublicense the said programs or codes."
+```
+
+This disclaimer is stored in every CTB file but does not prevent Mslicer from implementing the format for printer compatibility.
+
+## Implementation in Mslicer
+
+Mslicer's CTB implementation (`format/ctb_format/`):
+
+- Full encryption/decryption support
+- Optimized RLE encoder/decoder
+- Complete metadata serialization
+- Preview image generation
+- SHA-256 checksum verification
+
+### Reading CTB Files
+
+```rust
+use ctb_format::File;
+use common::serde::SliceDeserializer;
+
+let bytes = std::fs::read("model.ctb")?;
+let mut des = SliceDeserializer::new(&bytes);
+let file = File::deserialize(&mut des)?;
+```
+
+### Writing CTB Files
+
+```rust
+use ctb_format::File;
+use common::serde::DynamicSerializer;
+
+let mut ser = DynamicSerializer::new();
+file.serialize(&mut ser);
+std::fs::write("output.ctb", ser.into_inner())?;
+```
+
+## File Size
+
+CTB files are typically very compact due to the efficient RLE compression:
+
+- **Small models**: 1-5 MB
+- **Medium models**: 5-20 MB  
+- **Large models**: 20-100 MB
+- **Full-plate prints**: 100-500 MB
+
+The encryption overhead is minimal (only the settings section is encrypted, not the layer data).
+
+## Credits
+
+Mslicer's CTB implementation is based on documentation from the [UVtools](https://github.com/sn4k3/UVtools) project. Special thanks to the UVtools contributors for reverse-engineering this format.
+
+## See Also
+
+- [Elegoo GOO Format](/formats/elegoo-goo) - Alternative format for Elegoo printers
+- [Format Overview](/formats/overview) - Compare all supported formats
+- [UVtools](https://github.com/sn4k3/UVtools) - Post-processing tool with CTB support

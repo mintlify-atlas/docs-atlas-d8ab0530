@@ -1,0 +1,76 @@
+---
+title: Introduction
+description: A high-performance, open-source slicer for MSLA resin printers
+---
+
+Mslicer is a high-performance, open-source slicer designed specifically for MSLA (masked stereolithography) resin 3D printers. Built with speed and efficiency in mind, mslicer delivers exceptional performance that sets it apart from other slicing solutions.
+
+## What is mslicer?
+
+Mslicer is a complete slicing solution that takes 3D models and converts them into layer-by-layer instructions that your resin printer can understand. It provides a modern, intuitive interface for preparing your models for printing while maintaining blazing-fast slicing speeds.
+
+## Key features
+
+### Exceptional performance
+
+Mslicer is often **20× to 120× faster** than competing slicers. This dramatic speed improvement means you spend less time waiting and more time printing. Check out the [benchmark results](https://files.connorcode.com/Documents/mslicer/speed-chart.pdf) to see how mslicer compares.
+
+### Wide format support
+
+You can export sliced files in multiple formats to ensure compatibility with your printer:
+
+- **Chitu (.ctb)** - Including encrypted format support
+- **Elegoo (.goo)** - For Elegoo printers
+- **NanoDLP (.nanodlp)** - For NanoDLP-based systems
+- **Vector (.svg)** - For development and analysis
+
+### Intuitive interface
+
+The modern user interface provides:
+
+- Real-time 3D viewport with multiple render modes
+- Interactive slice preview with layer-by-layer inspection
+- Configurable dockable panels for customized workflows
+- Resin volume usage and print time estimates
+- Island detection and mesh validation warnings
+
+### Advanced features
+
+- **Printer presets** - Pre-configured settings for popular printers (defaults to ElEGOO Saturn 3 Ultra)
+- **Mesh validation** - Automatic detection of non-manifold meshes and models extending outside the build volume
+- **Support generation** - Basic support placement with visualization of overhanging faces (currently in development)
+- **Async operations** - Non-blocking tasks for loading, slicing, and exporting
+- **Undo/redo** - Full history tracking for settings changes
+- **Project files** - Save and load your work in progress
+
+## Supported model formats
+
+Mslicer can import:
+
+- **STL** files
+- **OBJ** files
+
+You can add models by going to File → Import Model or by dragging and dropping files directly into the workspace.
+
+## Platform support
+
+Mslicer runs on:
+
+- **Linux** (stable releases, Flathub, Nixpkgs)
+- **Windows** (stable and development builds)
+- **macOS** (development builds)
+
+<Note>
+For production use, automatic support generation in mslicer is still under development. For now, consider using [Runebrace](https://www.tarabella.it/Runebrace) to place supports before importing models into mslicer for slicing.
+</Note>
+
+## Next steps
+
+<CardGroup cols={2}>
+  <Card title="Installation" icon="download" href="/installation">
+    Install mslicer on your system
+  </Card>
+  <Card title="Quickstart" icon="rocket" href="/quickstart">
+    Slice your first model
+  </Card>
+</CardGroup>

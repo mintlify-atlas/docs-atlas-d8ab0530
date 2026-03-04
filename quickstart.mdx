@@ -1,80 +1,275 @@
 ---
-title: "Quickstart"
-description: "Start building awesome documentation in minutes"
+title: Quickstart
+description: Get started with mslicer in minutes - from installation to your first sliced file
 ---
 
-## Get started in three steps
+This guide will walk you through the complete process of using mslicer, from initial setup to exporting your first sliced file ready for printing.
 
-Get your documentation site running locally and make your first customization.
+## Before you begin
 
-### Step 1: Set up your local environment
+Make sure you have mslicer installed on your system. If you haven't installed it yet, check out the [installation guide](/installation).
 
-<AccordionGroup>
-  <Accordion icon="copy" title="Clone your docs locally">
-    During the onboarding process, you created a GitHub repository with your docs content if you didn't already have one. You can find a link to this repository in your [dashboard](https://dashboard.mintlify.com).
+## Step 1: Configure your printer settings
+
+Before you can slice anything, you need to tell mslicer about your printer's specifications.
+
+<Steps>
+  <Step title="Launch mslicer">
+    Open the mslicer application. You should see the main interface with a 3D viewport and several panels.
+  </Step>
+  
+  <Step title="Open the Slice Config panel">
+    Look for the `Slice Config` panel on the left side of the interface. This contains all the settings for your printer and slicing parameters.
+  </Step>
+  
+  <Step title="Set platform resolution">
+    Configure the resolution that matches your printer's LCD screen:
     
-    To clone the repository locally so that you can make and preview changes to your docs, follow the [Cloning a repository](https://docs.github.com/en/repositories/creating-and-managing-repositories/cloning-a-repository) guide in the GitHub docs.
-  </Accordion>
-  <Accordion icon="rectangle-terminal" title="Start the preview server">
-    1. Install the Mintlify CLI: `npm i -g mint`
-    2. Navigate to your docs directory and run: `mint dev`
-    3. Open `http://localhost:3000` to see your docs live!
+    - **Width**: Horizontal pixel count (e.g., 11520 for Saturn 3 Ultra)
+    - **Height**: Vertical pixel count (e.g., 5120 for Saturn 3 Ultra)
     
-    <Tip>Your preview updates automatically as you edit files.</Tip>
-  </Accordion>
-</AccordionGroup>
-
-### Step 2: Deploy your changes
-
-<AccordionGroup>
-  <Accordion icon="github" title="Install our GitHub app">
-    Install the Mintlify GitHub app from your [dashboard](https://dashboard.mintlify.com/settings/organization/github-app).
+    <Warning>
+    If these values are incorrect, your printer may fail to load the output file without showing an error message. Always verify these settings match your printer's specifications.
+    </Warning>
+  </Step>
+  
+  <Step title="Set build volume">
+    Enter your printer's build volume dimensions:
     
-    Our GitHub app automatically deploys your changes to your docs site, so you don't need to manage deployments yourself.
-</Accordion>
-<Accordion icon="palette" title="Update your site name and colors">
-    For a first change, let's update the name and colors of your docs site.
+    - **X, Y, Z**: Maximum printable dimensions in millimeters
+    
+    The default values are for the ElEGOO Saturn 3 Ultra. Check your printer's manual for the correct dimensions.
+  </Step>
+  
+  <Step title="Review exposure settings">
+    You can also configure exposure times, lift speeds, and other slicing parameters. For your first test, the defaults should work fine.
+  </Step>
+</Steps>
 
-    1. Open `docs.json` in your editor.
-    2. Change the `"name"` field to your project name.
-    3. Update the `"colors"` to match your brand.
-    4. Save and see your changes instantly at `http://localhost:3000`.
+<Tip>
+Mslicer includes printer presets for popular models. Look for preset options in the Slice Config panel to quickly configure your printer.
+</Tip>
 
-    <Tip>Try changing the primary color to see an immediate difference!</Tip>
-  </Accordion>
-</AccordionGroup>
+## Step 2: Import a 3D model
 
-### Step 3: Go live
+Now you're ready to load a model to slice.
 
-<Accordion icon="rocket" title="Publish your docs">
-  1. Commit and push your changes.
-  2. Your docs will update and be live in moments!
-</Accordion>
+<Steps>
+  <Step title="Load the test model (recommended for first time)">
+    To verify everything works, load the built-in test model by pressing:
+    
+    - **Ctrl+T** on Linux/Windows
+    - **Cmd+T** on macOS
+    
+    This loads the Utah Teapot, a classic test model.
+  </Step>
+  
+  <Step title="Or import your own model">
+    To use your own model:
+    
+    **Option 1: Menu import**
+    - Go to **File → Import Model**
+    - Select an `.stl` or `.obj` file
+    
+    **Option 2: Drag and drop**
+    - Simply drag your model file from your file explorer directly into the mslicer workspace
+  </Step>
+  
+  <Step title="View your model">
+    The model should appear in the 3D viewport. Use these controls to navigate:
+    
+    - **Scroll**: Zoom in/out (move toward/away from target)
+    - **Left-click drag**: Orbit around the model
+    - **Right-click drag**: Pan the view
+  </Step>
+</Steps>
+
+<Note>
+Mslicer automatically recomputes mesh normals by default to ensure proper rendering and slicing results.
+</Note>
+
+## Step 3: Position and prepare your model
+
+Before slicing, you'll want to position your model correctly on the build plate.
+
+<Steps>
+  <Step title="Open the Models panel">
+    Find the `Models` panel in the interface. It lists all models currently in your project.
+  </Step>
+  
+  <Step title="Access model properties">
+    Click the arrow button next to your model name to expand its properties. You'll see options for:
+    
+    - **Position**: X, Y, Z coordinates
+    - **Rotation**: Orientation in 3D space
+    - **Size/Scale**: Model dimensions
+  </Step>
+  
+  <Step title="Align to bed">
+    Click the "Align to Bed" action to automatically position your model on the build plate. This ensures the bottom of your model sits at Z=0.
+  </Step>
+  
+  <Step title="Check for warnings">
+    Mslicer will automatically detect and warn you about:
+    
+    - **Non-manifold meshes**: Models with geometry errors
+    - **Models extending outside the print volume**: Parts that won't fit on your build plate
+    
+    If you see warnings, consider repositioning or scaling your model.
+  </Step>
+</Steps>
+
+<Tip>
+Models that extend beyond the build volume are rendered in red in the viewport, making it easy to spot potential issues.
+</Tip>
+
+## Step 4: Add supports (optional)
+
+For models with overhangs, you'll need support structures.
+
+<Warning>
+The automatic support generator in mslicer is currently under development and not fully functional for most models.
+</Warning>
+
+For now, the recommended workflow is:
+
+1. Use [Runebrace](https://www.tarabella.it/Runebrace) (closed-source support placement software) to add supports to your model
+2. Export the model with supports as an STL
+3. Import the supported model into mslicer for slicing
+
+Mslicer does include basic support visualization features:
+- Visualization of overhanging faces and vertices
+- Manual support placement (currently unfinished)
+
+## Step 5: Slice your model
+
+Now for the main event - slicing your model into layers.
+
+<Steps>
+  <Step title="Start the slice operation">
+    Click the **Slice** button (typically in the Slice Config panel or main toolbar).
+  </Step>
+  
+  <Step title="Wait for completion">
+    A progress panel will appear showing the slicing operation. Thanks to mslicer's exceptional performance, this should complete very quickly - often in just seconds even for complex models.
+    
+    Mslicer is **20× to 120× faster** than competing slicers, so don't blink!
+  </Step>
+  
+  <Step title="Review the slice preview">
+    Once slicing completes, you'll see the slice preview interface with:
+    
+    - A layer-by-layer preview of your sliced model
+    - A slider on the left to scrub through layers
+    - **Pan**: Click and drag
+    - **Zoom**: Scroll wheel (zoom centers on cursor position)
+  </Step>
+  
+  <Step title="Check slice information">
+    Under the slice preview, you'll see:
+    
+    - **Resin volume usage**: How much resin the print will consume
+    - **Estimated print time**: How long the print will take
+    
+    Use this information to plan your printing schedule.
+  </Step>
+  
+  <Step title="Review for islands">
+    If you have island detection enabled, mslicer will identify isolated pieces that might fail during printing. Check for warnings about unsupported islands.
+  </Step>
+</Steps>
+
+<Tip>
+When zoomed into the slice preview, you can scrub through layers to inspect details and verify that your model will slice correctly.
+</Tip>
+
+## Step 6: Export for printing
+
+With your model sliced, it's time to create the file your printer can read.
+
+<Steps>
+  <Step title="Choose export format">
+    Select the appropriate format for your printer:
+    
+    - **Chitu (.ctb)**: For Chitubox-compatible printers (includes encrypted format support)
+    - **Elegoo (.goo)**: For Elegoo printers (Saturn, Mars series)
+    - **NanoDLP (.nanodlp)**: For NanoDLP-based systems
+    - **Vector (.svg)**: For development/analysis purposes
+  </Step>
+  
+  <Step title="Export the file">
+    Click the **Export** button (or go to **File → Export**).
+    
+    The export operation runs asynchronously, so you can continue working while it completes. This is especially useful for .nanodlp format, which requires compression.
+  </Step>
+  
+  <Step title="Save to USB drive">
+    Choose a save location, preferably directly to your printer's USB drive if it's connected.
+  </Step>
+  
+  <Step title="Verify the file">
+    The exported file should appear in your chosen location. You can verify it using tools like [UVtools](https://github.com/sn4k3/UVtools) if you want to inspect it before printing.
+  </Step>
+</Steps>
+
+<Note>
+If you need to make changes, you can update your slice settings and re-slice. Mslicer's undo/redo feature (under **Edit** in the menu bar) lets you track changes to settings.
+</Note>
+
+## Step 7: Save your project (optional)
+
+If you want to come back to your work later, you can save it as a project file.
+
+<Steps>
+  <Step title="Save the project">
+    Go to **File → Save Project** or press the save keyboard shortcut.
+  </Step>
+  
+  <Step title="Choose a location">
+    Select where to save your project file. Mslicer will remember this location for future saves.
+  </Step>
+  
+  <Step title="Load later">
+    When you're ready to continue, use **File → Open Project** to load your saved work.
+  </Step>
+</Steps>
+
+<Tip>
+Project files store your models, positions, settings, and slice configuration, making it easy to iterate on your designs.
+</Tip>
 
 ## Next steps
 
-Now that you have your docs running, explore these key features:
+Congratulations! You've successfully sliced your first model with mslicer. Here are some things to explore next:
 
 <CardGroup cols={2}>
-
-<Card title="Write Content" icon="pen-to-square" href="/essentials/markdown">
-  Learn MDX syntax and start writing your documentation.
-</Card>
-
-<Card title="Customize style" icon="palette" href="/essentials/settings">
-  Make your docs match your brand perfectly.
-</Card>
-
-<Card title="Add code examples" icon="square-code" href="/essentials/code">
-  Include syntax-highlighted code blocks.
-</Card>
-
-<Card title="API documentation" icon="code" href="/api-reference/introduction">
-  Auto-generate API docs from OpenAPI specs.
-</Card>
-
+  <Card title="Slice settings" icon="sliders" href="/config/slice-settings">
+    Fine-tune exposure times, lift speeds, and other slicing parameters
+  </Card>
+  
+  <Card title="Core features" icon="bolt" href="/features/slicing">
+    Learn about mslicer's powerful slicing engine
+  </Card>
+  
+  <Card title="Output formats" icon="file-export" href="/formats/overview">
+    Understand different export formats for various printers
+  </Card>
+  
+  <Card title="CLI usage" icon="terminal" href="/advanced/cli-usage">
+    Use the standalone CLI slicer for automated workflows
+  </Card>
 </CardGroup>
 
-<Note>
-  **Need help?** See our [full documentation](https://mintlify.com/docs) or join our [community](https://mintlify.com/community).
-</Note>
+## Additional resources
+
+- **[UVtools](https://github.com/sn4k3/UVtools)**: Inspect and post-process sliced files
+- **[msla-thumbs](https://github.com/connorslade/msla-thumbs)**: Add thumbnail support to KDE for sliced files
+- **[Runebrace](https://www.tarabella.it/Runebrace)**: Recommended tool for support placement
+
+## Getting help
+
+If you encounter issues or have questions:
+
+1. Check the [project page](https://connorcode.com/projects/mslicer) for updates and information
+2. Visit the [GitHub repository](https://github.com/connorslade/mslicer) to report bugs or request features
+3. Review the [changelog](https://github.com/connorslade/mslicer/blob/main/Changelog.md) to see what's new in recent versions

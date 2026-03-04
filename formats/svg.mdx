@@ -1,0 +1,362 @@
+---
+title: SVG Vector Format
+description: Vector output format for visualization, debugging, and quality verification
+---
+
+The SVG format output in Mslicer generates vector representations of sliced layers. Unlike raster formats (CTB, GOO, NanoDLP), SVG outputs geometric polygons rather than pixel bitmaps, making it ideal for visualization and debugging.
+
+## Overview
+
+SVG (Scalable Vector Graphics) is an XML-based vector image format. Mslicer's SVG output represents each layer as a collection of polygons showing the exact slice geometry.
+
+### Key Features
+
+- **Format**: XML-based SVG
+- **Content**: Vector polygons (not rasterized)
+- **Scalability**: Resolution-independent
+- **Size**: Variable (depends on model complexity)
+- **Use Case**: Visualization and debugging
+- **Compression**: None (plain text XML)
+
+<Warning>
+  SVG output is not suitable for printing on MSLA printers. It's designed for visualization, quality inspection, and debugging purposes only.
+</Warning>
+
+## Output Structure
+
+Mslicer arranges layers in a grid layout within a single SVG file:
+
+```xml
+<svg viewBox="0 0 width height" width="...mm" height="...mm">
+  <!-- Layer 1 (top-left) -->
+  <rect x="0" y="0" width="..." height="..." />
+  <polygon points="..." />
+  <polygon points="..." />
+  
+  <!-- Layer 2 (next in grid) -->
+  <rect x="width" y="0" width="..." height="..." />
+  <polygon points="..." />
+  
+  <!-- ... more layers ... -->
+</svg>
+```
+
+### Grid Layout
+
+From `slicer/src/slicer/slice_vector.rs:109-120`:
+
+```rust
+let sides = self.layers.len().isqrt() + 1;
+let (width, height) = (self.area.x as f32, self.area.y as f32);
+let size = (width * sides as f32, height * sides as f32);
+
+for (idx, layer) in self.layers.iter().enumerate() {
+    let (x, y) = (idx % sides, idx / sides);
+    let offset = Vector2::new(x as f32 * width, y as f32 * height);
+    // ...
+}
+```
+
+Layers are arranged in a grid where:
+- Grid size = ⌈√(layer_count)⌉ × ⌈√(layer_count)⌉
+- Each cell = platform width × platform height
+- Layers fill left-to-right, top-to-bottom
+
+### Example Layout (9 layers)
+
+```
+┌─────┬─────┬─────┐
+│  1  │  2  │  3  │
+├─────┼─────┼─────┤
+│  4  │  5  │  6  │
+├─────┼─────┼─────┤
+│  7  │  8  │  9  │
+└─────┴─────┴─────┘
+```
+
+## Geometry Representation
+
+### Polygon Elements
+
+Each layer's solid regions are represented as SVG polygons:
+
+```xml
+<polygon 
+  points="x1,y1 x2,y2 x3,y3 ..." 
+  fill="none" 
+  stroke="black" 
+  stroke-width="0.1"
+/>
+```
+
+### Layer Boundaries
+
+Each layer cell has a bounding rectangle:
+
+```xml
+<rect 
+  x="offset_x" 
+  y="offset_y" 
+  width="platform_width" 
+  height="platform_height" 
+  fill="none" 
+  stroke="gray" 
+  stroke-width="0.1"
+/>
+```
+
+## Slicing Process
+
+### Vector Slicing
+
+From `slicer/src/slicer/slice_vector.rs:29-60`:
+
+```rust
+pub fn slice_vector(&self) -> VectorSliceResult<'_> {
+    let segments = self.models
+        .iter()
+        .map(|x| Segments1D::from_mesh(x, SEGMENT_LAYERS))
+        .collect::<Vec<_>>();
+
+    let layers = (0..self.layers)
+        .into_par_iter()
+        .map(|layer| {
+            let height = layer as f32 * self.slice_config.slice_height;
+            
+            // Intersect mesh with plane
+            let segments = self.models
+                .iter()
+                .enumerate()
+                .flat_map(|(idx, mesh)| 
+                    segments[idx].intersect_plane(mesh, height)
+                )
+                .flat_map(|x| x.0)
+                .map(|x| x.xy())
+                .collect::<Vec<_>>();
+            
+            join_segments(&segments)
+        })
+        .collect::<Vec<_>>();
+}
+```
+
+### Segment Joining
+
+The slicer generates line segments from mesh intersections, then joins them into closed polygons:
+
+1. **Mesh Intersection**: Find where each triangle intersects the slice plane
+2. **Segment Collection**: Gather all intersection segments
+3. **Polygon Assembly**: Join segments into closed polygons (from `slice_vector.rs:66-98`)
+
+```rust
+fn join_segments(segments_raw: &[Vector2<f32>]) -> Vec<Vec<Vector2<f32>>> {
+    const DISTANCE_CUTOFF: f32 = 0.5;
+    
+    // Connect segments with endpoints within DISTANCE_CUTOFF
+    // Forms closed polygons from line segments
+    // ...
+}
+```
+
+## Use Cases
+
+### 1. Slice Verification
+
+Visually inspect slice geometry:
+- Verify correct slicing orientation
+- Check for missing/extra geometry
+- Identify thin walls or small features
+- Spot mesh errors
+
+### 2. Quality Inspection
+
+Analyze slice quality:
+- Measure feature sizes
+- Check wall thickness consistency  
+- Verify support placement
+- Identify problematic layers
+
+### 3. Documentation
+
+Create technical documentation:
+- Export to PDF for reports
+- Include in presentations
+- Share slice previews
+- Generate instruction manuals
+
+### 4. Debugging
+
+Troubleshoot slicing issues:
+- Inspect mesh topology problems
+- Verify coordinate transformations
+- Check layer height calculations
+- Identify floating geometry
+
+### 5. Post-Processing
+
+Manipulate slice data:
+- Import into CAD software
+- Edit polygons manually
+- Generate toolpaths
+- Create custom visualizations
+
+## Viewing SVG Files
+
+### Web Browsers
+
+All modern browsers support SVG:
+```bash
+# Open in default browser
+open output.svg
+firefox output.svg
+chrome output.svg
+```
+
+### Vector Editors
+
+- **Inkscape**: Full-featured vector editor
+- **Adobe Illustrator**: Professional vector editing
+- **Affinity Designer**: Vector design software
+
+### Image Viewers
+
+- **GIMP**: Can import and rasterize SVG
+- **Preview** (macOS): Native SVG support
+- **Eye of GNOME** (Linux): SVG viewer
+
+## Advantages
+
+### Resolution Independent
+
+Zoom infinitely without pixelation:
+- Inspect fine details
+- Measure exact dimensions
+- Verify sub-pixel features
+
+### Editable
+
+Modify geometry in vector editors:
+- Adjust polygon vertices
+- Add annotations
+- Overlay measurements
+- Combine multiple slices
+
+### Small File Size (Simple Models)
+
+For models with simple geometry:
+- Much smaller than raster formats
+- Quick to load and render
+- Easy to share
+
+### Human-Readable
+
+XML format is text-based:
+- Version control friendly
+- Diffable
+- Parseable with standard tools
+
+## Limitations
+
+### Not for Printing
+
+SVG output cannot be used directly on printers:
+- No rasterization
+- No exposure settings
+- No preview images
+- Missing printer-specific metadata
+
+### Large File Size (Complex Models)
+
+For highly detailed models:
+- Many polygons = large XML
+- Can be slow to render
+- May exceed memory limits in viewers
+
+### No Anti-Aliasing
+
+Vector output shows exact geometry:
+- No grayscale values
+- No anti-aliasing data
+- Binary (solid/empty) representation
+
+## Performance
+
+Vector slicing is fast but uses more memory:
+
+- **Slicing**: Comparable to raster slicing
+- **Segment Joining**: O(n²) algorithm (can be slow for complex layers)
+- **Serialization**: Fast (just write XML)
+
+<Note>
+  Very complex models with many small features may take longer to process due to the segment joining algorithm.
+</Note>
+
+## Implementation Details
+
+From `slicer/src/slicer/slice_vector.rs`:
+
+### Segment Storage
+
+```rust
+pub struct SvgFile {
+    layers: Vec<VectorLayer>,  // Vec<Vec<Vec<Vector2<f32>>>>
+    area: Vector2<u32>,         // Platform resolution
+}
+```
+
+### SVG Generation
+
+The SVG document is created using the `svg` crate:
+
+```rust
+use svg::{Document, node::element::{Polygon, Rectangle}};
+
+let mut svg = Document::new()
+    .set("viewBox", (0, 0, size.0, size.1))
+    .set("width", format!("{}mm", size.0))
+    .set("height", format!("{}mm", size.1));
+```
+
+### SlicedFile Trait
+
+SVG implements the `SlicedFile` trait with limitations:
+
+```rust
+impl SlicedFile for SvgFile {
+    fn runs(&self, _layer: usize) -> Box<dyn Iterator<Item = Run> + '_> {
+        unimplemented!()  // Cannot convert back to runs
+    }
+    
+    fn overwrite_layer(&mut self, _layer: usize, _image: Image) {
+        unimplemented!()  // Cannot overwrite vector layers
+    }
+}
+```
+
+## Command Line Usage
+
+```bash
+# Generate SVG output
+mslicer model.stl -o output.svg
+
+# With specific layer height
+mslicer model.stl -o output.svg --layer-height 0.05
+
+# Multiple models
+mslicer model1.stl model2.stl -o combined.svg
+```
+
+## Example Output
+
+A simple cube sliced into 10 layers would generate an SVG showing:
+- 10 cells in a 4×3 grid (⌈√10⌉ = 4)
+- Each cell contains a square polygon
+- Gray borders around each cell
+- Black outlines for the cube cross-sections
+
+## See Also
+
+- [Chitu CTB Format](/formats/chitu-ctb) - Binary raster format for printing
+- [Elegoo GOO Format](/formats/elegoo-goo) - Binary raster format for printing
+- [NanoDLP Format](/formats/nanodlp) - PNG-based raster format for printing
+- [Format Overview](/formats/overview) - Compare all formats

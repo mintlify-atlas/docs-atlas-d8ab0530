@@ -1,0 +1,190 @@
+---
+title: 'Project Files'
+description: 'Native Mslicer project file format and serialization'
+---
+
+## Overview
+
+Mslicer uses a custom binary format for saving and loading projects. Project files store all scene information including models, transformations, slice configuration, and post-processing settings.
+
+## File Structure
+
+Project files use a binary serialization format with the following top-level structure:
+
+1. **Version Header** (2 bytes) - Format version identifier
+2. **Slice Configuration** - Platform and exposure settings
+3. **Post-Processing Settings** - Anti-aliasing and elephant foot compensation
+4. **Model Information** - Metadata for each model in the scene
+5. **Mesh Data** - Shared mesh geometry (deduplicated)
+
+## Version
+
+<ParamField path="VERSION" type="u16" default="2">
+  Current project file format version. Files with mismatched versions cannot be loaded.
+
+  ```rust
+  const VERSION: u16 = 2;
+  ```
+</ParamField>
+
+## Project Structure
+
+A project contains the following components:
+
+```rust
+pub struct Project {
+    pub path: Option<PathBuf>,
+    pub slice_config: SliceConfig,
+    pub post_processing: PostProcessing,
+    pub models: Vec<Model>,
+}
+```
+
+### Slice Configuration
+
+The `SliceConfig` includes:
+- Output format (Goo, Ctb, NanoDLP, Svg)
+- Platform resolution and physical size
+- Layer height
+- Exposure configuration for regular layers
+- Exposure configuration for first layers
+- Number of first and transition layers
+
+See [CLI Options](/reference/cli/options) for details on these settings.
+
+### Post-Processing
+
+Post-processing settings control how layers are modified after slicing:
+
+```rust
+pub struct PostProcessing {
+    pub anti_alias: AntiAlias,
+    pub elephant_foot_fixer: ElephantFootFixer,
+}
+```
+
+**Anti-Aliasing**: Smooths layer edges by applying grayscale anti-aliasing to pixels at the boundary of solid areas.
+
+**Elephant Foot Fixer**: Compensates for overexposure on first layers that can cause the bottom of prints to be wider than intended.
+
+## Model Information
+
+Each model in the scene is stored with:
+
+```rust
+struct ModelInfo {
+    mesh: u32,              // Reference to shared mesh data
+    name: String,           // User-defined model name
+    color: Vector3<f32>,    // Display color (RGB)
+    hidden: bool,           // Visibility flag
+    position: Vector3<f32>, // 3D position
+    scale: Vector3<f32>,    // Scale factors
+    rotation: Vector3<f32>, // Rotation angles (radians)
+}
+```
+
+### Mesh Deduplication
+
+Mslicer optimizes file size by deduplicating mesh data. Multiple models can reference the same mesh geometry, only storing the unique transformations for each instance.
+
+For example, if you have 10 copies of the same model with different positions, only one copy of the mesh vertices and faces is stored.
+
+## Serialization Format
+
+### Model Serialization
+
+```
+- mesh_reference (u32, 4 bytes)
+- name_length (u32, 4 bytes)
+- name_bytes (variable)
+- color (Vector3<f32>, 12 bytes)
+- hidden (bool, 1 byte)
+- position (Vector3<f32>, 12 bytes)
+- scale (Vector3<f32>, 12 bytes)  
+- rotation (Vector3<f32>, 12 bytes)
+```
+
+### Mesh Data Serialization
+
+```
+- vertex_count (u32, 4 bytes)
+- vertices (Vector3<f32> * count)
+- face_count (u32, 4 bytes)
+- faces ([u32; 3] * count)
+```
+
+Each vertex is stored as three f32 values (x, y, z).
+Each face is stored as three u32 indices referencing vertices.
+
+## Loading Projects
+
+When loading a project:
+
+1. **Version check** - Ensures file version matches current format
+2. **Deserialize configuration** - Loads slice and post-processing settings
+3. **Load model information** - Reads all model metadata
+4. **Load mesh data** - Deserializes unique mesh geometries
+5. **Reconstruct models** - Creates model instances by combining mesh data with transformations
+
+Progress is tracked based on bytes read during mesh deserialization.
+
+## Saving Projects
+
+When saving a project:
+
+1. **Build mesh map** - Identifies unique meshes across all models
+2. **Write header** - Version and configuration
+3. **Write models** - Serializes model information with mesh references
+4. **Write meshes** - Serializes unique mesh data
+
+Progress is tracked based on vertex and face counts being written.
+
+## Error Handling
+
+<Warning>
+  Project files are not forward-compatible. Files saved with newer versions of Mslicer cannot be opened in older versions.
+</Warning>
+
+Common errors:
+
+- **Version mismatch**: File was created with a different format version
+- **Corrupted data**: File is incomplete or damaged
+- **Invalid mesh references**: Model references non-existent mesh
+
+## Example Usage
+
+### Saving a Project
+
+```rust
+use common::progress::Progress;
+use common::serde::DynamicSerializer;
+
+let progress = Progress::new();
+let mut serializer = DynamicSerializer::new();
+project.serialize(&mut serializer, progress);
+fs::write("my_project.msp", serializer.into_inner())?;
+```
+
+### Loading a Project
+
+```rust
+use common::progress::Progress;
+use common::serde::ReaderDeserializer;
+
+let file = File::open("my_project.msp")?;
+let mut deserializer = ReaderDeserializer::new(file);
+let progress = Progress::new();
+let project = Project::deserialize(&mut deserializer, progress)?;
+```
+
+## Performance Considerations
+
+- **Mesh deduplication** significantly reduces file size for scenes with many instances
+- **Binary format** is more compact and faster than text-based formats
+- **Streaming deserialization** allows progress tracking for large files
+- **No compression** - Files are uncompressed binary data
+
+## See Also
+
+- [Supported Mesh Formats](/reference/formats/supported-meshes) - Input mesh file formats
+- [CLI Options](/reference/cli/options) - Configuration options stored in projects

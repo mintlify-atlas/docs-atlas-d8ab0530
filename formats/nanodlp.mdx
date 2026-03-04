@@ -1,0 +1,344 @@
+---
+title: NanoDLP Format
+description: Technical details of the NanoDLP ZIP-based format with PNG layers
+---
+
+The NanoDLP format (`.nanodlp`) is a ZIP-based container format that stores slice data as PNG images along with JSON metadata. It's the native format for the NanoDLP software and is one of the most human-readable printer formats.
+
+## Overview
+
+Unlike binary formats like CTB and GOO, NanoDLP uses a ZIP archive containing standard PNG images and JSON configuration files. This makes it easy to inspect, debug, and modify sliced files.
+
+### Key Features
+
+- **Container**: ZIP archive
+- **Layer Storage**: PNG images (1.png, 2.png, ...)
+- **Metadata**: JSON files (human-readable)
+- **Compression**: PNG deflate compression
+- **Preview**: Single 3D preview image
+- **Open Format**: Fully documented
+
+## File Structure
+
+A `.nanodlp` file is a ZIP archive with the following contents:
+
+```
+model.nanodlp (ZIP)
+├── meta.json          # Optional metadata
+├── plate.json         # Print statistics
+├── info.json          # Per-layer information
+├── profile.json       # Print profile settings
+├── options.json       # Slicer options
+├── slicer.json        # Alternative name for options.json
+├── 3d.png            # Preview image
+├── 1.png             # Layer 1 image
+├── 2.png             # Layer 2 image
+├── 3.png             # Layer 3 image
+└── ...
+```
+
+### JSON Files
+
+All JSON files are pretty-printed for readability.
+
+## Metadata Files
+
+### meta.json (Optional)
+
+From `format/nanodlp_format/src/types.rs`:
+
+```json
+{
+  "version": "1.0",
+  "software": "mslicer",
+  "timestamp": 1234567890
+}
+```
+
+This file is optional and may be omitted.
+
+### plate.json
+
+Contains print statistics and bounding box:
+
+```rust
+pub struct Plate {
+    pub processed: bool,
+    pub total_solid_area: f32,     // First layer area
+    pub layers_count: u32,
+    
+    // Bounding box in mm
+    pub x_min: f32,
+    pub x_max: f32,
+    pub y_min: f32,
+    pub y_max: f32,
+    pub z_min: f32,
+    pub z_max: f32,
+}
+```
+
+### info.json
+
+Array of per-layer information:
+
+```rust
+pub struct LayerInfo {
+    pub layer_number: u32,
+    pub z_position: f32,           // mm
+    pub thickness: f32,            // mm
+    pub total_solid_area: f32,     // mm²
+    pub bounding_box: BoundingBox,
+    // ... additional fields
+}
+```
+
+### profile.json
+
+Print profile with exposure and movement settings:
+
+```rust
+pub struct Profile {
+    pub title: String,             // Profile name
+    
+    // Layer settings
+    pub depth: f32,                // Layer height (mm)
+    pub support_depth: f32,        // Bottom layer height
+    pub transitional_layer: u32,   // Transition count
+    
+    // Exposure
+    pub cure_time: Seconds,        // Regular exposure
+    pub support_cure_time: Seconds,// Bottom exposure
+    
+    // Colors
+    pub fill_color: String,        // "#ffffff"
+    pub blank_color: String,       // "#000000"
+    
+    // G-code templates
+    pub shield_before_layer: String,
+    pub shield_after_layer: String,
+    
+    pub updated: u32,              // Timestamp
+    pub ignore_mask: u8,
+}
+```
+
+### options.json / slicer.json
+
+Slicer configuration and platform settings:
+
+```rust
+pub struct Options {
+    // Platform
+    pub p_width: u32,              // Resolution X
+    pub p_height: u32,             // Resolution Y
+    pub x_pixel_size: f32,         // µm per pixel X
+    pub y_pixel_size: f32,         // µm per pixel Y
+    pub x_offset: u32,             // Center offset X
+    pub y_offset: u32,             // Center offset Y
+    
+    // Layer settings
+    pub thickness: f32,            // mm
+    pub support_layer_number: u32, // Bottom layers
+    
+    // Display settings
+    pub image_mirror: u8,
+    pub display_controller: u8,
+    pub ignore_mask: u8,
+    
+    // Colors (RGB)
+    pub fill_color: String,        // "#ffffff"
+    pub blank_color: String,       // "#000000"
+    pub fill_color_rgb: Color,     // [255, 255, 255]
+    pub blank_color_rgb: Color,    // [0, 0, 0]
+}
+```
+
+<Note>
+  NanoDLP software recognizes `options.json` while UVtools expects `slicer.json`. Mslicer writes both files for maximum compatibility.
+</Note>
+
+## G-code Templates
+
+NanoDLP uses G-code templates for printer control:
+
+### shield_before_layer (from `format/nanodlp_format/src/types.rs`)
+
+```gcode
+G1 Z[[LayerPosition]] F[[ZSpeed]]
+G4 P0
+M106 S0
+```
+
+Executed before exposing each layer.
+
+### shield_after_layer
+
+```gcode
+M106 S255
+G4 P0
+[[Delay]]
+```
+
+Executed after exposing each layer.
+
+These templates support variable substitution:
+- `[[LayerPosition]]` - Current Z height
+- `[[ZSpeed]]` - Z-axis speed
+- `[[Delay]]` - Calculated delay time
+
+## Layer Images
+
+### PNG Format
+
+Each layer is stored as a grayscale PNG:
+
+- **Filename**: `{layer_number}.png` (1-indexed)
+- **Format**: Grayscale PNG
+- **Compression**: Deflate (optimized for RLE data)
+- **Pixel values**: 0x00 (black) to 0xFF (white)
+
+### Custom PNG Encoder
+
+From the crate documentation (`format/nanodlp_format/src/lib.rs:1-4`):
+
+> Implementation of the `.nanodlp` format.
+> With a custom PNG encoder (deflate implementation) optimized for writing run length encoded layer data.
+
+Mslicer includes an optimized PNG encoder that takes advantage of the run-length structure of layer data for better compression.
+
+## Preview Image
+
+The `3d.png` file contains a preview of the sliced model:
+
+- **Filename**: `3d.png`
+- **Format**: RGBA PNG
+- **Size**: Variable (typically matches platform resolution)
+- **Content**: Rendered preview of the model
+
+## Compression
+
+The NanoDLP format uses two levels of compression:
+
+1. **PNG Deflate**: Each layer image is compressed using PNG's deflate algorithm
+2. **ZIP Compression**: The entire archive can optionally use ZIP compression
+
+Mslicer optimizes the PNG encoder for the horizontal run patterns typical in sliced layers.
+
+## Compatibility
+
+### Supported Software
+
+- **NanoDLP**: Native format (primary use case)
+- **UVtools**: Full read/write support
+- **DIY Printers**: Widely supported for custom builds
+
+### Printer Support
+
+The NanoDLP format is primarily used with:
+
+- Raspberry Pi-based DLP printers
+- Custom MSLA printer builds  
+- DIY projection printers
+- Any printer running NanoDLP software
+
+<Tip>
+  NanoDLP is the most compatible format for DIY and custom printers since the JSON files can be easily adapted to different hardware configurations.
+</Tip>
+
+## Advantages
+
+### Human-Readable
+
+Unlike binary formats, you can:
+- Extract the ZIP file
+- View layer images in any image viewer
+- Edit JSON settings with a text editor
+- Debug issues by inspecting individual layers
+
+### Easy to Modify
+
+You can post-process sliced files:
+```bash
+# Extract the archive
+unzip model.nanodlp -d model_extracted/
+
+# Edit a layer with image editing software
+gimp model_extracted/5.png
+
+# Modify settings
+vim model_extracted/profile.json
+
+# Repackage
+cd model_extracted
+zip -r ../model_modified.nanodlp *
+```
+
+### Format Conversion
+
+Easy to convert to/from other formats:
+- Extract PNGs for analysis
+- Convert to video for visualization
+- Generate time-lapses
+
+## File Size
+
+NanoDLP files are typically larger than CTB/GOO due to PNG overhead:
+
+- **Small models**: 2-10 MB
+- **Medium models**: 10-40 MB
+- **Large models**: 40-200 MB
+- **Full-plate prints**: 200 MB - 1 GB
+
+The trade-off is readability and debuggability vs. file size.
+
+## Implementation in Mslicer
+
+Mslicer's NanoDLP implementation (`format/nanodlp_format/`):
+
+- ZIP archive creation/extraction
+- Custom optimized PNG encoder
+- JSON serialization/deserialization
+- Bounding box calculation
+- Preview image generation
+- Both options.json and slicer.json output
+
+### Creating NanoDLP Files
+
+```rust
+use nanodlp_format::File;
+use common::progress::Progress;
+
+let file = File::from_slice_result(result);
+let mut ser = DynamicSerializer::new();
+file.serialize(&mut ser, Progress::new())?;
+std::fs::write("output.nanodlp", ser.into_inner())?;
+```
+
+### Reading NanoDLP Files
+
+```rust
+use nanodlp_format::File;
+use std::fs::File as StdFile;
+
+let file = StdFile::open("model.nanodlp")?;
+let nanodlp = File::deserialize(file)?;
+```
+
+## Performance
+
+Despite the larger file size, Mslicer's optimized PNG encoder provides fast serialization:
+
+- Parallel layer encoding
+- Optimized deflate compression for RLE data
+- Efficient ZIP writing
+
+## Documentation
+
+- [Official NanoDLP Documentation](https://docs.nanodlp.com/manual/format)
+- [NanoDLP Code Documentation](https://docs.nano3dtech.com/manual/code)
+
+## See Also
+
+- [Chitu CTB Format](/formats/chitu-ctb) - Binary encrypted alternative
+- [Elegoo GOO Format](/formats/elegoo-goo) - Binary open alternative
+- [Format Overview](/formats/overview) - Compare all supported formats

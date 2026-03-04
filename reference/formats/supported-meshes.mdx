@@ -1,0 +1,257 @@
+---
+title: 'Supported Mesh Formats'
+description: 'STL and OBJ mesh format support and implementation details'
+---
+
+## Overview
+
+Mslicer supports loading 3D mesh files in **STL** and **OBJ** formats. These are the standard mesh formats used in 3D printing workflows.
+
+## Format Detection
+
+The mesh format is automatically detected based on the file extension:
+
+```rust
+let mesh = mesh_format::load_mesh(des, format, progress)?;
+```
+
+Supported extensions:
+- `.stl` - Stereolithography format
+- `.obj` - Wavefront OBJ format
+
+## Mesh Structure
+
+All loaded meshes are converted to Mslicer's internal representation:
+
+```rust
+pub struct Mesh {
+    pub verts: Vec<Vector3<f32>>,  // Vertex positions
+    pub faces: Vec<[u32; 3]>,      // Triangle faces (vertex indices)
+}
+```
+
+Each face references three vertices by index to form a triangle.
+
+## STL Format
+
+### Overview
+
+STL (Stereolithography) is the most common format for 3D printing. It represents surfaces as a collection of triangular facets.
+
+### Binary STL
+
+Mslicer automatically detects and parses binary STL files:
+
+**File Structure:**
+```
+UINT8[80]    – Header                 - 80 bytes
+UINT32       – Number of triangles    - 04 bytes
+foreach triangle                      - 50 bytes
+    REAL32[3] – Normal vector         - 12 bytes
+    REAL32[3] – Vertex 1              - 12 bytes
+    REAL32[3] – Vertex 2              - 12 bytes
+    REAL32[3] – Vertex 3              - 12 bytes
+    UINT16    – Attribute byte count  - 02 bytes
+end
+```
+
+**Expected file size:** 84 + (50 × triangle_count) bytes
+
+### ASCII STL
+
+ASCII STL files are also supported:
+
+**Format:**
+```
+solid name
+facet normal ni nj nk
+    outer loop
+        vertex v1x v1y v1z
+        vertex v2x v2y v2z
+        vertex v3x v3y v3z
+    endloop
+endfacet
+endsolid name
+```
+
+### STL Features
+
+- **Automatic format detection** - Binary vs ASCII determined by file size
+- **Vertex deduplication** - Shared vertices are merged to save memory
+- **Normal vectors ignored** - Normals are recalculated during slicing
+- **Progress tracking** - Reports loading progress for large files
+
+### STL Loading Example
+
+```bash
+slicer --mesh model.stl output.goo
+```
+
+Output:
+```
+Loaded `model.stl`. { vert: 15420, face: 30840 }
+```
+
+## OBJ Format
+
+### Overview
+
+Wavefront OBJ is a text-based format commonly used in 3D modeling software. Mslicer supports a subset of the OBJ specification focused on triangle meshes.
+
+### Supported OBJ Elements
+
+<ParamField path="v" type="vertex">
+  Vertex position (x, y, z coordinates)
+
+  ```obj
+  v 1.0 2.0 3.0
+  v -0.5 1.2 4.8
+  ```
+</ParamField>
+
+<ParamField path="f" type="face">
+  Face definition (triangle with vertex indices)
+
+  Supports multiple formats:
+  - `f 1 2 3` - Vertex indices only
+  - `f 1/1/1 2/2/2 3/3/3` - Vertex/texture/normal indices
+
+  ```obj
+  f 1 2 3
+  f 4/1/1 5/2/2 6/3/3
+  ```
+
+  **Note:** Only vertex indices are used; texture and normal indices are ignored.
+</ParamField>
+
+### OBJ Features
+
+- **1-indexed vertices** - OBJ uses 1-based indexing; automatically converted to 0-based
+- **Line-by-line parsing** - Efficient streaming parser
+- **Flexible face format** - Handles vertex-only and vertex/texture/normal formats
+- **Comments ignored** - Lines starting with `#` are skipped
+
+### Unsupported OBJ Features
+
+Mslicer does **not** support:
+- Texture coordinates (`vt`)
+- Vertex normals (`vn`) 
+- Materials (`mtllib`, `usemtl`)
+- Groups (`g`) and objects (`o`)
+- Smooth shading (`s`)
+- Quads or polygons with more than 3 vertices
+
+<Warning>
+  OBJ files with quads or n-gons must be triangulated before loading. Most 3D software can export triangulated OBJ files.
+</Warning>
+
+### OBJ Loading Example
+
+```bash
+slicer --mesh character.obj output.goo
+```
+
+Sample OBJ file:
+```obj
+# Simple cube
+v -1.0 -1.0 -1.0
+v -1.0 -1.0  1.0
+v -1.0  1.0 -1.0
+v -1.0  1.0  1.0
+
+f 1 2 3
+f 2 4 3
+```
+
+## Vertex Deduplication
+
+Both STL and OBJ parsers implement vertex deduplication:
+
+```rust
+fn vert_idx(verts: &mut HashMap<Vector3<u32>, u32>, vert: Vector3<f32>) -> u32 {
+    let size = verts.len() as u32;
+    *verts.entry(vert.map(f32::to_bits)).or_insert(size)
+}
+```
+
+Vertices are compared using their binary representation (`f32::to_bits`) to ensure exact matches. This:
+- Reduces memory usage
+- Improves slicing performance
+- Maintains mesh topology
+
+## Progress Tracking
+
+Both formats support progress reporting during loading:
+
+- **STL Binary**: Progress based on triangle count
+- **STL ASCII**: Progress based on bytes read
+- **OBJ**: Progress based on bytes read
+
+Progress is displayed in the CLI:
+```
+Loading model... 45.2%
+```
+
+## Error Handling
+
+Common errors when loading meshes:
+
+<Warning>
+  **Unsupported format**: Only `.stl` and `.obj` files are accepted. The parser will panic if an unknown format is provided.
+</Warning>
+
+- **Invalid vertex data**: Malformed coordinates or non-numeric values
+- **Invalid face data**: References to non-existent vertices  
+- **File not found**: Input path does not exist
+- **Permission denied**: Insufficient permissions to read file
+
+## Best Practices
+
+### For STL Files
+
+- Use binary STL for larger models (more compact, faster to parse)
+- Ensure models are watertight (closed surface)
+- Export with consistent units (millimeters recommended)
+
+### For OBJ Files
+
+- Triangulate meshes before export
+- Use vertex-only format when possible (no textures/normals)
+- Verify 1-indexed vertex references
+- Remove unused vertices and materials
+
+## Performance Comparison
+
+| Format | Parse Speed | File Size | Memory Usage |
+|--------|-------------|-----------|-------------|
+| STL Binary | Fast | Compact | Low |
+| STL ASCII | Medium | Large | Low |
+| OBJ | Medium | Large | Low |
+
+**Recommendation:** Use binary STL for best performance.
+
+## Example: Multi-Model Loading
+
+Load multiple meshes with different formats:
+
+```bash
+slicer \
+  --mesh base.stl --position 0,0,0 \
+  --mesh detail.obj --position 50,50,10 --scale 0.5,0.5,0.5 \
+  output.goo
+```
+
+Output:
+```
+Loaded `base.stl`. { vert: 8420, face: 16840 }
+Loaded `detail.obj`. { vert: 3215, face: 6430 }
+Layer: 500/500, 100.0%
+Saving 100.0%
+Done. Elapsed: 8.2s
+```
+
+## See Also
+
+- [Slicer Command](/reference/cli/slicer-command) - Using the CLI with mesh files
+- [CLI Options](/reference/cli/options) - Model transformation options
+- [Project Files](/reference/formats/project-files) - Saving and loading projects

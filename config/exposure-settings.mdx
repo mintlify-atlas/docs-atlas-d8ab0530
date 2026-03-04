@@ -1,0 +1,156 @@
+---
+title: Exposure Settings
+description: Configure UV exposure times, lift distances, and speeds for normal and first layers
+---
+
+Exposure settings control how each layer is cured during the printing process. Proper configuration is critical for achieving successful prints with good layer adhesion and detail.
+
+## ExposureConfig Structure
+
+The `ExposureConfig` struct is defined in `common/src/slice/config.rs:28` and contains five key parameters:
+
+<ParamField path="exposure_time" type="Seconds" default="3.0">
+  The duration that the UV light exposes each layer.
+  
+  **Normal layers default**: 3.0 seconds
+  
+  **First layers default**: 30.0 seconds
+  
+  Longer exposure times result in stronger curing but may cause over-curing and loss of detail. The optimal value depends on your resin type and printer's UV intensity.
+</ParamField>
+
+<ParamField path="lift_distance" type="Milimeters" default="5.0">
+  The distance the build platform lifts after exposing a layer, allowing fresh resin to flow underneath.
+  
+  **Default**: 5.0 mm
+  
+  This must be sufficient for the film to separate from the cured layer and new resin to flow into place.
+</ParamField>
+
+<ParamField path="lift_speed" type="CentimetersPerSecond" default="5.5 cm/s">
+  The speed at which the build platform lifts after exposure.
+  
+  **Default**: 5.5 cm/s (calculated as 330 mm/min)
+  
+  Too fast may cause parts to detach from supports; too slow increases print time unnecessarily.
+</ParamField>
+
+<ParamField path="retract_distance" type="Milimeters" default="5.0">
+  The distance the build platform retracts back down to the next layer position.
+  
+  **Default**: 5.0 mm
+  
+  Typically matches the lift distance but can be adjusted independently.
+</ParamField>
+
+<ParamField path="retract_speed" type="CentimetersPerSecond" default="5.5 cm/s">
+  The speed at which the build platform retracts back down.
+  
+  **Default**: 5.5 cm/s (calculated as 330 mm/min)
+  
+  This affects the force of impact when the platform returns to position.
+</ParamField>
+
+## First Layer Exposure
+
+First layers require significantly different exposure settings to ensure proper adhesion to the build plate. Mslicer maintains two separate `ExposureConfig` instances:
+
+### Normal Exposure Config
+
+Used for regular layers after the first layers and transition period:
+
+```rust
+exposure_config: ExposureConfig {
+    exposure_time: Seconds::new(3.0),
+    lift_distance: Milimeters::new(5.0),
+    lift_speed: CentimetersPerSecond::new(5.5),  // 330 mm/min
+    retract_distance: Milimeters::new(5.0),
+    retract_speed: CentimetersPerSecond::new(5.5),  // 330 mm/min
+}
+```
+
+### First Exposure Config
+
+Used for the initial layers that adhere to the build plate:
+
+```rust
+first_exposure_config: ExposureConfig {
+    exposure_time: Seconds::new(30.0),  // 10× longer than normal
+    lift_distance: Milimeters::new(5.0),
+    lift_speed: CentimetersPerSecond::new(5.5),
+    retract_distance: Milimeters::new(5.0),
+    retract_speed: CentimetersPerSecond::new(5.5),
+}
+```
+
+The key difference is the **exposure time**: first layers use 30 seconds by default (compared to 3 seconds for normal layers) to create a strong bond with the build plate.
+
+## Layer-Based Exposure Selection
+
+Mslicer automatically selects the appropriate exposure configuration based on the current layer number using the `exposure_config()` method in `common/src/slice/config.rs:38`:
+
+```rust
+pub fn exposure_config(&self, layer: u32) -> &ExposureConfig {
+    if layer < self.first_layers {
+        &self.first_exposure_config
+    } else {
+        &self.exposure_config
+    }
+}
+```
+
+Layers are zero-indexed, so:
+- Layers 0, 1, 2 use `first_exposure_config` (when `first_layers = 3`)
+- Layer 3 and above use `exposure_config`
+
+## Transition Layers
+
+Transition layers interpolate between first and normal exposure settings to prevent abrupt changes that could cause delamination. The number of transition layers is configured separately in `SliceConfig.transition_layers` (default: 10).
+
+During transition:
+- Exposure time gradually decreases from first layer values to normal values
+- Other parameters (lift/retract) also interpolate smoothly
+- This helps prevent stress on the part where settings change
+
+The interpolation is calculated in the `print_time()` method, which averages the two configurations over the transition period.
+
+## Print Time Calculation
+
+Total layer time includes:
+
+1. **Exposure time**: Duration of UV exposure
+2. **Lift time**: `lift_distance / lift_speed`
+3. **Retract time**: `retract_distance / retract_speed`
+
+The complete calculation is implemented in `common/src/slice/config.rs:56`:
+
+```rust
+let layer_time = exp.exposure_time
+    + exp.lift_distance / exp.lift_speed
+    + exp.retract_distance / exp.retract_speed;
+
+let bottom_layer_time = fexp.exposure_time
+    + fexp.lift_distance / fexp.lift_speed
+    + fexp.retract_distance / fexp.retract_speed;
+```
+
+## Configuring in the UI
+
+Exposure settings are configured in the Slice Config window through collapsible sections:
+
+- **Exposure Config**: Settings for normal layers
+- **First Exposure Config**: Settings for initial layers
+
+Each section provides drag controls for all five parameters with appropriate units and ranges. The UI is implemented in `mslicer/src/windows/slice_config.rs:154`.
+
+<Tip>
+  Start with default values and adjust exposure times based on your specific resin and printer. Most other values can remain at defaults unless you're experiencing adhesion or separation issues.
+</Tip>
+
+## Units Reference
+
+- **Seconds**: Time values for exposure duration
+- **Milimeters**: Distance values for lift and retract
+- **CentimetersPerSecond**: Speed values (internally converted from mm/min)
+
+All units are strongly typed in the source code to prevent unit conversion errors.

@@ -1,0 +1,280 @@
+---
+title: Slice Preview
+description: Navigate, inspect, and verify sliced layers before printing
+---
+
+After slicing completes, the Slice Preview interface allows you to inspect each layer of your sliced model to verify everything looks correct before printing.
+
+## Preview Interface
+
+The slice preview is displayed in the **Slice Operation** panel after a successful slice operation.
+
+<Note>
+The preview appears almost instantly after slicing completes since mslicer is optimized for speed - typically just 2-10 seconds for most models.
+</Note>
+
+### Preview Features
+
+<CardGroup cols={2}>
+  <Card title="Layer Navigation" icon="layer-group">
+    Scrub through layers one at a time or jump to specific layers
+  </Card>
+  <Card title="Zoom & Pan" icon="search-plus">
+    Zoom in to inspect fine details and pan to view different areas
+  </Card>
+  <Card title="Island Detection" icon="exclamation-triangle">
+    Detect and highlight disconnected geometry that may fail during printing
+  </Card>
+  <Card title="Print Statistics" icon="chart-bar">
+    View estimated print time and resin volume
+  </Card>
+</CardGroup>
+
+## Layer Navigation
+
+### Layer Slider
+
+The vertical slider on the left side of the preview allows you to scrub through layers:
+
+- **Drag** the slider to move through layers
+- **Click** anywhere on the slider to jump to that layer
+- **Current layer** is highlighted with a rounded rectangle handle
+
+**Implementation** (`slice_operation.rs:270`):
+```rust
+let slider = Slider::new(&mut result.slice_preview_layer, 1..=info.layers as usize)
+    .vertical()
+    .handle_shape(HandleShape::Rect { aspect_ratio: 1.0 })
+    .show_value(false)
+```
+
+### Layer Counter
+
+The layer counter shows the current layer and total layer count:
+
+```
+0042/1234
+```
+
+- Use the **up arrow** (⌃) button to increment the layer
+- Use the **down arrow** (⌄) button to decrement the layer
+- Or **drag** the number to quickly scrub through layers
+
+<Note>
+Layers are numbered starting from 1 (not 0) for user-friendly display.
+</Note>
+
+## Zoom and Pan Controls
+
+### Zooming
+
+**Scroll** with your mouse wheel or trackpad to zoom in and out:
+- Zoom is centered on the cursor position
+- Zoom range: 0.5x to 10x
+- Smooth scrolling supported
+
+**Implementation** (`slice_operation.rs:241`):
+```rust
+let scroll = ui.input(|x| x.smooth_scroll_delta);
+result.preview_scale = (result.preview_scale + scroll.y * 0.01).clamp(0.5, 10.0);
+```
+
+### Panning
+
+**Drag** with the mouse to pan the view:
+- Works at any zoom level
+- Preview offset is maintained when changing layers
+- Smooth dragging with instant visual feedback
+
+### Reset View
+
+Click the **⌗ Reset View** button to return to the default zoom and position:
+
+```rust
+result.preview_offset = Vector2::zeros();
+result.preview_scale = 1.0;
+```
+
+## Layer Rendering
+
+Layers are decoded and rendered on-demand for efficient memory usage.
+
+### On-Demand Decoding
+
+When you navigate to a new layer (`slice_operation.rs:204`):
+
+1. Check if the current layer needs updating
+2. Allocate a buffer for the layer data
+3. Decode the layer from the compressed format
+4. Decode any annotations (islands)
+5. Upload to GPU for rendering
+
+```rust
+if result.last_preview_layer != result.slice_preview_layer {
+    result.last_preview_layer = result.slice_preview_layer;
+    let size = (width * height) as usize;
+    
+    let mut layer = vec![0u8; size];
+    let layer_idx = result.slice_preview_layer - 1;
+    result.file.decode_layer(layer_idx, &mut layer);
+}
+```
+
+<Note>
+Only the currently visible layer is kept in memory, allowing preview of files that would be tens of gigabytes when fully decompressed.
+</Note>
+
+## Island Detection
+
+Islands are disconnected chunks of material that may fail during printing because they're not attached to anything below them.
+
+### Running Island Detection
+
+Click **⊕ Detect Islands** to analyze the sliced model:
+
+```
+⊕ Detect Islands
+```
+
+<Warning>
+Island detection can take 10-30 seconds depending on model complexity and layer count. It runs as a background task.
+</Warning>
+
+### Island Visualization
+
+**In the Preview**:
+- Disconnected regions are colored red
+- Islands are overlaid on the normal layer display
+
+**On the Slider**:
+- Layers containing islands are marked with red indicators
+- The current layer handle expands to show islands clearly
+- Jump directly to problematic layers
+
+**Implementation** (`slice_operation.rs:293`):
+```rust
+for i in 0..info.layers {
+    if annotations.contains(i as usize) {
+        // Draw red indicator on slider
+        let rect = Rect::from_center_size(pos(t), Vec2::new(width, slice * 2.0));
+        painter.rect_filled(rect, 0, ISLAND_COLOR);
+    }
+}
+```
+
+<Note>
+Island detection results are stored in the annotations layer, which is decoded separately from the main layer data.
+</Note>
+
+## Print Statistics
+
+The bottom toolbar shows important print statistics:
+
+### Print Time
+
+```
+🕐 2h 34m
+```
+
+Estimated total print time based on:
+- Exposure time per layer
+- Lift and retract speeds
+- Layer count
+- First layer vs. normal layer exposure settings
+
+### Resin Volume
+
+```
+💧 24.35 ml
+```
+
+Estimated resin consumption in milliliters (ml):
+- Calculated by counting lit pixels (voxels)
+- Converted to volume using printer resolution
+- Displayed in cubic centimeters (1 cm³ = 1 ml)
+
+**Implementation** (`slice_operation.rs:152`):
+```rust
+let volume = result.volume.get::<Centimeter>(); // cm³ = ml
+ui.label(format!("{DROP} {volume:.2} ml"));
+```
+
+<Note>
+These are estimates. Actual resin usage may vary due to supports, hollowing, and printer-specific factors.
+</Note>
+
+## Completion Summary
+
+After slicing completes, you'll see a summary:
+
+```
+Slicing completed in 4.23s!
+```
+
+Showing:
+- Total slicing time
+- Number of layers generated
+- Success status
+
+## Saving and Exporting
+
+From the slice preview, you can:
+
+### Save to File
+
+Click **💾 Save** to save the sliced file:
+
+1. Choose a location and filename
+2. The file extension is automatically added
+3. File is written with progress tracking
+
+<Note>
+Large files (500MB+) may take 10-30 seconds to write depending on your storage speed.
+</Note>
+
+### Send to Printer
+
+Click **✉ Send to Printer** to upload via network (requires Remote Print):
+
+1. Select a connected printer from the list
+2. Enter a filename
+3. File is uploaded and sent to the printer
+
+See [Remote Printing](/features/remote-printing) for details.
+
+<Warning>
+Only .goo and .ctb formats support the preview interface. SVG and NanoDLP formats do not show previews.
+</Warning>
+
+## Supported Formats
+
+Preview support by format:
+
+| Format | Preview Support | Notes |
+|--------|----------------|-------|
+| GOO | ✓ | Full preview support |
+| CTB | ✓ | Full preview support |
+| NanoDLP | ✗ | No preview available |
+| SVG | ✗ | Vector format, no raster preview |
+
+## Performance Tips
+
+<CardGroup cols={2}>
+  <Card title="Fast Layer Switching" icon="bolt">
+    Layers are decoded on-demand, so switching between layers is instant
+  </Card>
+  <Card title="GPU Accelerated" icon="microchip">
+    Preview rendering uses GPU shaders for smooth zoom and pan even at high resolutions
+  </Card>
+</CardGroup>
+
+## Related Topics
+
+<CardGroup cols={2}>
+  <Card title="Slicing Engine" href="/features/slicing" icon="layer-group">
+    Learn how the slicing engine works
+  </Card>
+  <Card title="Remote Printing" href="/features/remote-printing" icon="wifi">
+    Send sliced files directly to your printer
+  </Card>
+</CardGroup>

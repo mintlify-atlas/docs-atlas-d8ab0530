@@ -1,0 +1,309 @@
+---
+title: Elegoo GOO Format
+description: Technical details of the Elegoo GOO format used by Mars and Saturn series printers
+---
+
+The Elegoo GOO format (`.goo`) is an open binary format designed by Elegoo for their Mars and Saturn series MSLA resin printers. Unlike the encrypted CTB format, GOO is fully documented and unencrypted.
+
+## Overview
+
+GOO is a straightforward binary format with a well-defined specification. Elegoo has published the [official format specification](https://github.com/elegooofficial/GOO) on GitHub, making it easy to implement and maintain.
+
+### Key Features
+
+- **Format Version**: V3.0 (current)
+- **Encryption**: None (open format)
+- **Compression**: Run-length encoding (RLE)
+- **Layer Data**: RLE compressed bitmaps with checksum
+- **Preview Images**: Two sizes (116×116 and 290×290)
+- **Byte Order**: Big-endian
+
+## File Structure
+
+The GOO file consists of three main parts:
+
+```
+[Header] [Layer 1] [Layer 2] ... [Layer N] [Ending String]
+```
+
+### File Layout
+
+1. **Header** (196,501 bytes fixed)
+   - Version and metadata
+   - Print settings
+   - Preview images
+   - Printer configuration
+
+2. **Layer Data** (variable)
+   - Each layer: RLE compressed pixel data
+   - Layer count specified in header
+
+3. **Ending String** (11 bytes)
+   - Magic bytes: `00 00 00 07 00 00 00 44 4C 50 00`
+
+## Header Structure
+
+From `format/goo_format/src/header.rs:14-140`:
+
+### Format Information
+
+```rust
+pub version: SizedString<4>,          // "V3.0"
+pub software_info: SizedString<32>,    // "mslicer" or other
+pub software_version: SizedString<24>, // Version string
+pub file_time: SizedString<24>,        // "%Y-%m-%d %H:%M:%S"
+pub printer_name: SizedString<32>,     // "standard" (default)
+pub printer_type: SizedString<32>,     // "Default" (default)
+pub profile_name: SizedString<32>,     // Profile name
+```
+
+### Platform Settings
+
+```rust
+pub x_resolution: u16,       // Pixel width (e.g., 3840)
+pub y_resolution: u16,       // Pixel height (e.g., 2400)
+pub x_size: Milimeters,      // Physical width
+pub y_size: Milimeters,      // Physical height
+pub z_size: Milimeters,      // Build height
+pub x_mirror: bool,          // Mirror X axis
+pub y_mirror: bool,          // Mirror Y axis
+```
+
+<Warning>
+  GOO files will not print if the printer's resolution does not match `x_resolution` and `y_resolution`. Always verify these match your printer.
+</Warning>
+
+### Layer Configuration
+
+```rust
+pub layer_count: u32,               // Total layers
+pub layer_thickness: Milimeters,    // Layer height
+pub bottom_layers: u32,             // First layer count
+pub transition_layers: u16,         // Transition count
+```
+
+### Exposure Settings
+
+```rust
+// Regular layers
+pub exposure_time: Seconds,
+pub light_off_delay: Seconds,       // (via exposure_delay_mode)
+pub light_pwm: u8,                  // 0-255
+
+// Bottom layers
+pub bottom_exposure_time: Seconds,
+pub bottom_light_pwm: u8,           // 0-255
+```
+
+### Movement Settings
+
+GOO supports dual-stage lift and retract:
+
+```rust
+// Regular layers - Stage 1
+pub lift_distance: Milimeters,
+pub lift_speed: MilimetersPerMinute,
+pub retract_distance: Milimeters,
+pub retract_speed: MilimetersPerMinute,
+
+// Regular layers - Stage 2
+pub second_lift_distance: Milimeters,
+pub second_lift_speed: MilimetersPerMinute,
+pub second_retract_distance: Milimeters,
+pub second_retract_speed: MilimetersPerMinute,
+
+// Bottom layers - Stage 1
+pub bottom_lift_distance: Milimeters,
+pub bottom_lift_speed: MilimetersPerMinute,
+pub bottom_retract_distance: Milimeters,
+pub bottom_retract_speed: MilimetersPerMinute,
+
+// Bottom layers - Stage 2
+pub bottom_second_lift_distance: Milimeters,
+pub bottom_second_lift_speed: MilimetersPerMinute,
+pub bottom_second_retract_distance: Milimeters,
+pub bottom_second_retract_speed: MilimetersPerMinute,
+```
+
+### Timing Settings
+
+```rust
+// Bottom layers
+pub bottom_before_lift_time: Seconds,
+pub bottom_after_lift_time: Seconds,
+pub bottom_after_retract_time: Seconds,
+
+// Regular layers
+pub before_lift_time: Seconds,
+pub after_lift_time: Seconds,
+pub after_retract_time: Seconds,
+```
+
+### Preview Images
+
+```rust
+pub small_preview: PreviewImage<116, 116>,
+pub big_preview: PreviewImage<290, 290>,
+```
+
+Both previews are stored as RGB565 encoded images.
+
+### Other Settings
+
+```rust
+pub anti_aliasing_level: u16,
+pub grey_level: u16,
+pub blur_level: u16,
+pub grey_scale_level: bool,        // 4-bit vs 8-bit grayscale
+pub per_layer_settings: bool,       // "Advanced Mode"
+
+pub printing_time: u32,             // Estimated seconds
+pub total_volume: f32,              // mm³
+pub total_weight: f32,              // grams
+pub total_price: f32,               // Cost
+pub price_unit: SizedString<8>,     // Currency symbol
+```
+
+## Exposure Delay Mode
+
+From `format/goo_format/src/header.rs:142-147`:
+
+```rust
+pub enum ExposureDelayMode {
+    TurnOffTime,   // UV off time between layers
+    StaticTime,    // Fixed delay time
+}
+```
+
+This determines how `turn_off_time` and the before/after lift times are interpreted.
+
+## Layer Data Format
+
+Each layer contains:
+
+1. **Layer header** (position, exposure, movement)
+2. **RLE compressed pixel data**
+3. **Checksum** (for data integrity)
+
+### Run-Length Encoding
+
+The GOO format uses the same RLE scheme as CTB (see [Chitu CTB Format](/formats/chitu-ctb#run-length-encoding)):
+
+- Variable-length encoding for run lengths
+- Grayscale values (0x00 = black, 0xFF = white)
+- Optimized for horizontal pixel runs
+
+### Layer Checksum
+
+Each layer includes a checksum to detect corruption during file transfer or storage.
+
+## Magic Bytes and Delimiters
+
+From `format/goo_format/src/lib.rs:20-24`:
+
+```rust
+const MAGIC_TAG: &[u8] = &[0x07, 0x00, 0x00, 0x00, 0x44, 0x4C, 0x50, 0x00];
+const DELIMITER: &[u8] = &[0xD, 0xA];  // CRLF
+const ENDING_STRING: &[u8] = &[
+    0x00, 0x00, 0x00, 0x07, 0x00, 0x00, 0x00, 0x44, 0x4C, 0x50, 0x00,
+];
+```
+
+These markers help parsers identify sections of the file.
+
+## Compatibility
+
+### Supported Printers
+
+The GOO format is the native format for Elegoo printers:
+
+- **Mars Series**: Mars 2, Mars 3, Mars 4
+- **Saturn Series**: Saturn, Saturn 2, Saturn 3
+- **Jupiter Series**: Jupiter
+- **Mars Pro Series**: Mars 2 Pro, Mars 3 Pro, Mars 4 Pro
+
+### Resolution Examples
+
+| Printer | Resolution | Pixel Size |
+|---------|------------|------------|
+| Mars 3 | 4098×2560 | 35 µm |
+| Mars 4 Ultra | 7680×4320 | 18 µm |
+| Saturn 2 | 8520×4320 | 28.5 µm |
+| Saturn 3 Ultra | 11520×5120 | 19 µm |
+| Jupiter | 5448×3064 | 50 µm |
+
+<Tip>
+  GOO files can be opened in [UVtools](https://github.com/sn4k3/UVtools) for inspection, editing, and conversion to other formats.
+</Tip>
+
+## Grayscale Levels
+
+The `grey_scale_level` field determines bit depth:
+
+- **false**: 4-bit grayscale (0x00-0x0F, 16 levels)
+- **true**: 8-bit grayscale (0x00-0xFF, 256 levels)
+
+Most modern Elegoo printers support 8-bit grayscale for anti-aliasing.
+
+## Implementation in Mslicer
+
+Mslicer's GOO implementation (`format/goo_format/`):
+
+- Full format specification compliance
+- Big-endian byte order handling
+- RLE encoder/decoder
+- Checksum calculation and verification
+- Preview image generation
+- Default values for all fields
+
+### Reading GOO Files
+
+```rust
+use goo_format::File;
+use common::serde::SliceDeserializer;
+
+let bytes = std::fs::read("model.goo")?;
+let mut des = SliceDeserializer::new(&bytes);
+let file = File::deserialize(&mut des)?;
+```
+
+### Writing GOO Files
+
+```rust
+use goo_format::File;
+use common::serde::DynamicSerializer;
+
+let mut ser = DynamicSerializer::new();
+file.serialize(&mut ser);
+std::fs::write("output.goo", ser.into_inner())?;
+```
+
+## File Size
+
+GOO files are comparable in size to CTB due to similar RLE compression:
+
+- **Small models**: 1-5 MB
+- **Medium models**: 5-20 MB
+- **Large models**: 20-100 MB
+- **Full-plate prints**: 100-500 MB
+
+The fixed 196KB header contributes minimally to overall file size.
+
+## Advanced Mode
+
+When `per_layer_settings` is enabled:
+
+- Each layer can override global exposure settings
+- Allows for per-layer exposure time adjustments
+- Useful for adaptive exposure strategies
+
+## Credits
+
+The GOO format is documented and maintained by Elegoo:
+- [Official GOO Format Specification](https://github.com/elegooofficial/GOO)
+
+## See Also
+
+- [Chitu CTB Format](/formats/chitu-ctb) - Alternative encrypted format
+- [Format Overview](/formats/overview) - Compare all supported formats
+- [Official GOO Spec](https://github.com/elegooofficial/GOO) - Elegoo's documentation

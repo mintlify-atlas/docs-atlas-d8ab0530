@@ -1,97 +1,229 @@
 ---
-title: "Introduction"
-description: "Welcome to the new home for your documentation"
+title: "Mslicer Documentation"
+mode: "custom"
 ---
 
-## Setting up
+<div className="relative overflow-hidden bg-gradient-to-br from-[#544e41] via-[#6b5f45] to-[#544e41] dark:from-[#0f1117] dark:via-[#1a1d27] dark:to-[#0f1117] py-20">
+  <div className="max-w-6xl mx-auto px-6">
+    <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 items-center">
+      <div className="lg:col-span-7">
+        <h1 className="text-4xl sm:text-5xl lg:text-6xl font-bold text-white mb-6">
+          High-performance MSLA resin 3D printer slicer
+        </h1>
+        <p className="text-lg sm:text-xl text-gray-200 dark:text-gray-300 max-w-2xl mb-8">
+          Slice your models 20-120× faster than competing slicers. Open source, feature-rich, and built for speed.
+        </p>
+        <div className="flex flex-wrap gap-4">
+          <a
+            href="/quickstart"
+            className="inline-flex items-center px-6 py-3 rounded-lg bg-[#eac926] hover:bg-[#f2c500] text-black font-semibold transition-colors no-underline"
+          >
+            Get Started
+          </a>
+          <a
+            href="/installation"
+            className="inline-flex items-center px-6 py-3 rounded-lg border border-white/30 bg-white/10 hover:bg-white/20 text-white font-semibold transition-colors no-underline"
+          >
+            Download
+          </a>
+        </div>
+      </div>
+      <div className="lg:col-span-5 flex justify-center">
+        <img
+          src="https://media.brand.dev/c5355bdf-36d5-4abd-998e-e44acb25adf2.svg"
+          alt="Mslicer logo"
+          noZoom
+          className="w-64 h-64 max-w-full"
+        />
+      </div>
+    </div>
+  </div>
+</div>
 
-Get your documentation site up and running in minutes.
+<div className="mt-16 mb-16 max-w-5xl mx-auto px-6">
+  <h2 className="text-2xl sm:text-3xl font-semibold text-gray-900 dark:text-white mb-3">
+    Quick start
+  </h2>
+  <p className="text-base text-gray-600 dark:text-gray-400 mb-8">
+    Get up and running with Mslicer in minutes
+  </p>
 
-<Card
-  title="Start here"
-  icon="rocket"
-  href="/quickstart"
-  horizontal
->
-  Follow our three step quickstart guide.
-</Card>
+  <Steps>
+    <Step title="Install Mslicer">
+      Download the latest release for your platform from [GitHub Releases](https://github.com/connorslade/mslicer/releases), [Flathub](https://flathub.org/apps/com.connorcode.mslicer), or [Nixpkgs](https://search.nixos.org/packages?channel=unstable&show=mslicer).
+      
+      ```bash
+      # Or build from source
+      git clone https://github.com/connorslade/mslicer
+      cd mslicer
+      cargo build -r -p mslicer
+      ```
+    </Step>
+    
+    <Step title="Configure your printer">
+      Launch Mslicer and open the **Slice Config** panel. Set your printer's platform resolution and build volume. Defaults are for the ELEGOO Saturn 3 Ultra (11520×5120 px, 218.88×122.88×260 mm).
+      
+      <Note>
+        Incorrect platform settings may cause your printer to reject the sliced file without displaying an error.
+      </Note>
+    </Step>
+    
+    <Step title="Import and slice a model">
+      Import an STL or OBJ file via **File → Import Model** or drag and drop into the viewport. Position your model, then click **Slice** to generate layers. Export to your printer's format (.goo, .ctb, .nanodlp).
+      
+      <Tip>
+        Try the built-in test model by pressing `Ctrl+T` (Utah Teapot)
+      </Tip>
+    </Step>
+  </Steps>
+</div>
 
-## Make it yours
+<div className="mt-16 mb-16 max-w-5xl mx-auto px-6">
+  <h2 className="text-2xl sm:text-3xl font-semibold text-gray-900 dark:text-white mb-3">
+    Explore by topic
+  </h2>
+  <p className="text-base text-gray-600 dark:text-gray-400 mb-8">
+    Learn about Mslicer's powerful features
+  </p>
 
-Design a docs site that looks great and empowers your users.
-
-<Columns cols={2}>
-  <Card
-    title="Edit locally"
-    icon="pen-to-square"
-    href="/development"
-  >
-    Edit your docs locally and preview them in real time.
-  </Card>
-  <Card
-    title="Customize your site"
-    icon="palette"
-    href="/essentials/settings"
-  >
-    Customize the design and colors of your site to match your brand.
-  </Card>
+  <CardGroup cols={2}>
     <Card
-    title="Set up navigation"
-    icon="map"
-    href="/essentials/navigation"
-  >
-    Organize your docs to help users find what they need and succeed with your product.
-  </Card>
-  <Card
-    title="API documentation"
-    icon="terminal"
-    href="/api-reference/introduction"
-  >
-    Auto-generate API documentation from OpenAPI specifications.
-  </Card>
-</Columns>
+      title="Core features"
+      icon="bolt"
+      href="/features/slicing"
+    >
+      Ultra-fast slicing, model management, slice preview, and support generation
+    </Card>
+    <Card
+      title="Output formats"
+      icon="file-export"
+      href="/formats/overview"
+    >
+      Export to Chitu CTB, Elegoo GOO, NanoDLP, and SVG vector formats
+    </Card>
+    <Card
+      title="Configuration"
+      icon="sliders"
+      href="/config/slice-settings"
+    >
+      Slice settings, printer presets, and exposure configuration
+    </Card>
+    <Card
+      title="CLI usage"
+      icon="terminal"
+      href="/advanced/cli-usage"
+    >
+      Automate slicing with the command-line slicer tool
+    </Card>
+    <Card
+      title="Remote printing"
+      icon="wifi"
+      href="/features/remote-printing"
+    >
+      Upload and monitor prints remotely via MQTT
+    </Card>
+    <Card
+      title="Advanced tools"
+      icon="wand-magic-sparkles"
+      href="/advanced/post-processing"
+    >
+      Anti-aliasing, island detection, and elephant foot compensation
+    </Card>
+  </CardGroup>
+</div>
 
-## Create beautiful pages
+<div className="mt-16 mb-16 max-w-5xl mx-auto px-6">
+  <h2 className="text-2xl sm:text-3xl font-semibold text-gray-900 dark:text-white mb-3">
+    Why Mslicer?
+  </h2>
+  <p className="text-base text-gray-600 dark:text-gray-400 mb-8">
+    Built for performance and flexibility
+  </p>
 
-Everything you need to create world-class documentation.
+  <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+    <div className="p-6 rounded-lg border border-gray-200 dark:border-[#27272a] bg-gray-50 dark:bg-[#1a1d27]">
+      <div className="text-3xl mb-3">⚡</div>
+      <h3 className="text-lg font-semibold text-gray-900 dark:text-white mb-2">
+        Blazing fast
+      </h3>
+      <p className="text-sm text-gray-600 dark:text-gray-400">
+        20-120× faster than competing slicers. Slice a full model in seconds, not minutes.
+      </p>
+    </div>
+    <div className="p-6 rounded-lg border border-gray-200 dark:border-[#27272a] bg-gray-50 dark:bg-[#1a1d27]">
+      <div className="text-3xl mb-3">🔓</div>
+      <h3 className="text-lg font-semibold text-gray-900 dark:text-white mb-2">
+        Open source
+      </h3>
+      <p className="text-sm text-gray-600 dark:text-gray-400">
+        GPL-3.0 licensed. Inspect, modify, and contribute to the codebase on GitHub.
+      </p>
+    </div>
+    <div className="p-6 rounded-lg border border-gray-200 dark:border-[#27272a] bg-gray-50 dark:bg-[#1a1d27]">
+      <div className="text-3xl mb-3">🎯</div>
+      <h3 className="text-lg font-semibold text-gray-900 dark:text-white mb-2">
+        Feature-rich
+      </h3>
+      <p className="text-sm text-gray-600 dark:text-gray-400">
+        Supports, island detection, anti-aliasing, remote printing, and more.
+      </p>
+    </div>
+  </div>
+</div>
 
-<Columns cols={2}>
-  <Card
-    title="Write with MDX"
-    icon="pen-fancy"
-    href="/essentials/markdown"
-  >
-    Use MDX to style your docs pages.
-  </Card>
-  <Card
-    title="Code samples"
-    icon="code"
-    href="/essentials/code"
-  >
-    Add sample code to demonstrate how to use your product.
-  </Card>
-  <Card
-    title="Images"
-    icon="image"
-    href="/essentials/images"
-  >
-    Display images and other media.
-  </Card>
-  <Card
-    title="Reusable snippets"
-    icon="recycle"
-    href="/essentials/reusable-snippets"
-  >
-    Write once and reuse across your docs.
-  </Card>
-</Columns>
+<div className="mt-16 mb-16 max-w-5xl mx-auto px-6">
+  <h2 className="text-2xl sm:text-3xl font-semibold text-gray-900 dark:text-white mb-3">
+    Resources
+  </h2>
+  <p className="text-base text-gray-600 dark:text-gray-400 mb-8">
+    Connect with the community and explore related tools
+  </p>
 
-## Need inspiration?
+  <CardGroup cols={2}>
+    <Card
+      title="GitHub repository"
+      icon="github"
+      href="https://github.com/connorslade/mslicer"
+    >
+      View source code, report issues, and contribute
+    </Card>
+    <Card
+      title="Changelog"
+      icon="clock-rotate-left"
+      href="https://github.com/connorslade/mslicer/blob/main/Changelog.md"
+    >
+      See what's new in each release
+    </Card>
+    <Card
+      title="UVtools"
+      icon="magnifying-glass"
+      href="https://github.com/sn4k3/UVtools"
+    >
+      Inspect and post-process sliced MSLA files
+    </Card>
+    <Card
+      title="Runebrace"
+      icon="life-ring"
+      href="https://www.tarabella.it/Runebrace"
+    >
+      Generate supports before slicing (recommended)
+    </Card>
+  </CardGroup>
+</div>
 
-<Card
-  title="See complete examples"
-  icon="stars"
-  href="https://mintlify.com/customers"
->
-  Browse our showcase of exceptional documentation sites.
-</Card>
+<div className="mt-20 mb-16 max-w-5xl mx-auto px-6">
+  <div className="p-8 rounded-2xl border border-gray-200 dark:border-[#27272a] bg-gray-50 dark:bg-[#1a1d27] text-center">
+    <h2 className="text-2xl sm:text-3xl font-semibold text-gray-900 dark:text-white mb-3">
+      Ready to get started?
+    </h2>
+    <p className="text-base text-gray-600 dark:text-gray-400 mb-6 max-w-2xl mx-auto">
+      Download Mslicer and start slicing your models faster than ever
+    </p>
+    <a
+      href="/installation"
+      className="inline-flex items-center px-6 py-3 rounded-lg bg-[#eac926] hover:bg-[#f2c500] text-black font-semibold transition-colors no-underline"
+    >
+      Install Mslicer
+    </a>
+  </div>
+</div>

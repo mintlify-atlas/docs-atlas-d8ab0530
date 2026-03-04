@@ -1,0 +1,101 @@
+---
+title: Printer Presets
+description: Use predefined printer configurations or create custom presets for your resin printer
+---
+
+Printer presets provide a convenient way to quickly configure Mslicer for specific resin printer models. Each preset contains the printer's LCD resolution and build platform dimensions.
+
+## How Printer Presets Work
+
+Printer presets are defined in the application's configuration file (`config.toml`) and are loaded at startup. When a preset is selected, it automatically sets the `platform_resolution` and `platform_size` values in the slice configuration.
+
+### PrinterDefaults Structure
+
+Printer presets are defined by the `PrinterDefaults` struct in `mslicer/src/app/config.rs:43`:
+
+<ParamField path="name" type="String" required>
+  The display name of the printer preset shown in the UI dropdown.
+</ParamField>
+
+<ParamField path="resolution" type="Vector2<u32>" required>
+  The LCD screen resolution in pixels (width × height).
+  
+  **Example**: `Vector2::new(11_520, 5_120)` for 11,520 × 5,120 pixels
+</ParamField>
+
+<ParamField path="size" type="Vector3<Milimeters>" required>
+  The physical build platform dimensions in millimeters (width × depth × height).
+  
+  **Example**: `Vector3::new(218.88, 122.904, 260.0)` for 218.88 × 122.904 × 260.0 mm
+</ParamField>
+
+## Default Preset
+
+Mslicer includes one built-in preset by default:
+
+- **Elegoo Saturn 3 Ultra**
+  - Resolution: 11,520 × 5,120 pixels
+  - Build Size: 218.88 × 122.904 × 260.0 mm
+
+This preset is defined in `mslicer/src/app/config.rs:114`.
+
+## Creating Custom Presets
+
+You can add custom printer presets by manually editing the `config.toml` file in your configuration directory. Access this directory through the Workspace tab in Mslicer.
+
+### Configuration File Format
+
+Add printer presets to the `[[printers]]` array in `config.toml`:
+
+```toml
+[[printers]]
+name = "Elegoo Saturn 3 Ultra"
+resolution = [11520, 5120]
+size = [218.88, 122.904, 260.0]
+
+[[printers]]
+name = "Your Custom Printer"
+resolution = [3840, 2400]
+size = [192.0, 120.0, 245.0]
+```
+
+### Finding Your Printer's Specifications
+
+To create an accurate preset, you'll need:
+
+1. **LCD Resolution**: Check your printer's specifications or manual for the pixel dimensions
+2. **Build Volume**: Note the X, Y, and Z dimensions of the build platform in millimeters
+
+<Note>
+  The resolution and size values must match precisely for accurate slicing. Incorrect values will result in models being sliced at the wrong scale.
+</Note>
+
+## Using Presets in the UI
+
+The printer preset selector is located in the Slice Config window (`mslicer/src/windows/slice_config.rs:60`):
+
+1. Open the Slice Config panel
+2. Use the "Printer" dropdown to select your preset
+3. Hover over a preset name to see its resolution and build volume
+4. Select "Custom" to manually configure platform settings
+
+### Custom Mode
+
+When "Custom" is selected (`selected_printer == 0`), you can manually adjust:
+
+- Platform Resolution (using drag controls)
+- Platform Size (X, Y, Z dimensions)
+
+These manual settings override any preset values and allow for one-off configurations without creating a permanent preset.
+
+## Preset Loading
+
+Presets are loaded from `config.toml` at application startup. The configuration is deserialized into the `Config::printers` vector, which contains all available `PrinterDefaults` entries.
+
+When a preset is selected, the UI automatically:
+
+1. Updates `slice_config.platform_resolution` to match the preset
+2. Updates `slice_config.platform_size` to match the preset
+3. Recalculates model bounds to ensure they fit within the build volume
+
+This ensures that all models are validated against the correct platform dimensions immediately after switching presets.

@@ -1,0 +1,505 @@
+---
+title: "Remote API"
+description: "HTTP API for printer status monitoring, JSON schemas, and integration examples"
+---
+
+## Overview
+
+Mslicer's remote print feature includes an HTTP status API that allows you to monitor printer status programmatically. The API is automatically started when remote print is enabled and serves data at `http://0.0.0.0:<http_port>/status`.
+
+<Info>
+  All server ports are randomized each time remote print starts and are printed to the log. Check the console or Log panel for the current port.
+</Info>
+
+## Enabling the API
+
+The status proxy must be explicitly enabled:
+
+```rust
+// From http_server.rs:146-148
+pub fn set_proxy_enabled(&self, enabled: bool) {
+    self.inner.proxy_enabled.store(enabled, Ordering::Relaxed);
+}
+```
+
+When disabled, requests to `/status` return `403 Forbidden`.
+
+## API Endpoint
+
+### GET /status
+
+Returns the current status of all connected printers.
+
+**URL**: `http://0.0.0.0:<port>/status`
+
+**Method**: `GET`
+
+**Response**: JSON array of printer objects
+
+**Status Codes**:
+- `200 OK` - Success
+- `403 Forbidden` - Proxy is disabled
+
+## Response Schema
+
+### Printer Object
+
+```typescript
+interface Printer {
+  machine_id: string;
+  attributes: Attributes;
+  status: Status;
+  last_update: number;  // Unix timestamp (seconds)
+}
+```
+
+### Attributes
+
+The `Attributes` structure contains printer hardware information from the initial handshake:
+
+```typescript
+interface Attributes {
+  Name: string;              // Printer display name
+  MachineName: string;       // Machine model name
+  ProtocolVersion: string;   // MQTT protocol version
+  FirmwareVersion: string;   // Printer firmware version
+  Resolution: Resolution;    // Display resolution
+  MainboardIP: string;       // Printer IP address
+  MainboardID: string;       // Unique mainboard identifier
+  SDCPStatus: number;        // SDCP connection status
+  LocalSDCPAddress: string;  // Local SDCP address
+  SDCPAddress: string;       // Remote SDCP address
+  Capabilities: Capability[]; // Supported features
+}
+
+interface Resolution {
+  X: number;
+  Y: number;
+}
+
+enum Capability {
+  FILE_TRANSFER = "FILE_TRANSFER",
+  PRINT_CONTROL = "PRINT_CONTROL"
+}
+```
+
+### Status
+
+The `Status` structure is sent from the printer over MQTT every few seconds:
+
+```typescript
+interface Status {
+  CurrentStatus: CurrentStatus;
+  PreviousStatus: number;
+  PrintInfo: PrintInfo;
+  FileTransferInfo: FileTransferInfo;
+}
+
+enum CurrentStatus {
+  Ready = 0,
+  Busy = 1,
+  TransferringFile = 2
+}
+```
+
+### Print Info
+
+```typescript
+interface PrintInfo {
+  Status: PrintInfoStatus;
+  CurrentLayer: number;    // Current layer being printed
+  TotalLayer: number;      // Total layers in print
+  CurrentTicks: number;    // Current print time in ticks
+  TotalTicks: number;      // Estimated total time in ticks
+  ErrorNumber: number;     // Error code (0 = no error)
+  Filename: string;        // Name of file being printed
+}
+
+enum PrintInfoStatus {
+  None = 0,
+  InitialLower = 1,
+  Lowering = 2,
+  Exposure = 3,
+  Retracting = 4,
+  FinalRetract = 12,
+  Canceled = 13,
+  Complete = 16
+}
+```
+
+### File Transfer Info
+
+```typescript
+interface FileTransferInfo {
+  Status: FileTransferStatus;
+  DownloadOffset: number;  // Bytes downloaded
+  CheckOffset: number;     // Bytes verified
+  FileTotalSize: number;   // Total file size in bytes
+  Filename: string;        // Name of file being transferred
+}
+
+enum FileTransferStatus {
+  None = 0,
+  Done = 2,
+  Error = 3
+}
+```
+
+## Example Response
+
+```json
+[
+  {
+    "machine_id": "ABC123DEF456",
+    "attributes": {
+      "Name": "Saturn 3 Ultra",
+      "MachineName": "Saturn3Ultra",
+      "ProtocolVersion": "V1.0.0",
+      "FirmwareVersion": "V4.4.3-20231201",
+      "Resolution": {
+        "X": 11520,
+        "Y": 5120
+      },
+      "MainboardIP": "192.168.1.100",
+      "MainboardID": "ABC123DEF456",
+      "SDCPStatus": 1,
+      "LocalSDCPAddress": "192.168.1.100:3000",
+      "SDCPAddress": "cloud.elegoo.com:8883",
+      "Capabilities": [
+        "FILE_TRANSFER",
+        "PRINT_CONTROL"
+      ]
+    },
+    "status": {
+      "CurrentStatus": 1,
+      "PreviousStatus": 0,
+      "PrintInfo": {
+        "Status": 3,
+        "CurrentLayer": 450,
+        "TotalLayer": 2000,
+        "CurrentTicks": 27000,
+        "TotalTicks": 120000,
+        "ErrorNumber": 0,
+        "Filename": "miniature.goo"
+      },
+      "FileTransferInfo": {
+        "Status": 0,
+        "DownloadOffset": 0,
+        "CheckOffset": 0,
+        "FileTotalSize": 0,
+        "Filename": ""
+      }
+    },
+    "last_update": 1709596823
+  }
+]
+```
+
+## Implementation Details
+
+### HTTP Server
+
+The API is built on the `afire` web framework:
+
+```rust
+// From http_server.rs:99-131
+server.route(Method::GET, "/status", |ctx| {
+    let state = ctx.app();
+    if !state.proxy_enabled.load(Ordering::Relaxed) {
+        ctx.status(Status::Forbidden)
+            .text("Proxy is disabled")
+            .send()?;
+        return Ok(());
+    }
+
+    trace!("Status requested by {}", ctx.req.address);
+
+    #[derive(Serialize)]
+    struct Printer<'a> {
+        machine_id: &'a str,
+        attributes: &'a Attributes,
+        status: status::Status,
+        last_update: i64,
+    }
+
+    let clients = state.mqtt_server.clients.read();
+    let clients = clients
+        .iter()
+        .map(|(machine_id, printer)| Printer {
+            machine_id,
+            attributes: &printer.attributes,
+            status: printer.status.lock().clone(),
+            last_update: printer.last_update.load(Ordering::Relaxed),
+        })
+        .collect::<Vec<_>>();
+
+    ctx.text(json!(clients)).content(Content::JSON).send()?;
+    Ok(())
+});
+```
+
+### Thread Safety
+
+The implementation uses thread-safe data structures:
+- `Arc<MqttInner>` for shared MQTT server state
+- `RwLock` for client list access
+- `Mutex` for individual printer status
+- `AtomicBool` for proxy enabled flag
+- `AtomicI64` for last update timestamp
+
+## Integration Examples
+
+### Python
+
+```python
+import requests
+import time
+
+def get_printer_status(port):
+    """Fetch printer status from the API."""
+    try:
+        response = requests.get(f"http://localhost:{port}/status")
+        response.raise_for_status()
+        return response.json()
+    except requests.RequestException as e:
+        print(f"Error fetching status: {e}")
+        return None
+
+def monitor_print(port, machine_id):
+    """Monitor a specific print job until completion."""
+    while True:
+        printers = get_printer_status(port)
+        if not printers:
+            time.sleep(5)
+            continue
+        
+        printer = next((p for p in printers if p['machine_id'] == machine_id), None)
+        if not printer:
+            print(f"Printer {machine_id} not found")
+            break
+        
+        status = printer['status']['PrintInfo']
+        if status['Status'] == 16:  # Complete
+            print("Print complete!")
+            break
+        elif status['Status'] == 13:  # Canceled
+            print("Print canceled")
+            break
+        
+        progress = (status['CurrentLayer'] / status['TotalLayer']) * 100
+        print(f"Layer {status['CurrentLayer']}/{status['TotalLayer']} ({progress:.1f}%)")
+        
+        time.sleep(10)
+
+# Usage
+monitor_print(8080, "ABC123DEF456")
+```
+
+### JavaScript (Node.js)
+
+```javascript
+const axios = require('axios');
+
+async function getPrinterStatus(port) {
+  try {
+    const response = await axios.get(`http://localhost:${port}/status`);
+    return response.data;
+  } catch (error) {
+    console.error('Error fetching status:', error.message);
+    return null;
+  }
+}
+
+async function displayAllPrinters(port) {
+  const printers = await getPrinterStatus(port);
+  if (!printers) return;
+  
+  printers.forEach(printer => {
+    console.log(`\n${printer.attributes.Name} (${printer.machine_id})`);
+    console.log(`  Status: ${getStatusName(printer.status.CurrentStatus)}`);
+    
+    const info = printer.status.PrintInfo;
+    if (info.TotalLayer > 0) {
+      const progress = (info.CurrentLayer / info.TotalLayer) * 100;
+      console.log(`  Progress: ${info.CurrentLayer}/${info.TotalLayer} (${progress.toFixed(1)}%)`);
+      console.log(`  File: ${info.Filename}`);
+    }
+  });
+}
+
+function getStatusName(status) {
+  const names = ['Ready', 'Busy', 'Transferring File'];
+  return names[status] || 'Unknown';
+}
+
+// Usage
+setInterval(() => displayAllPrinters(8080), 5000);
+```
+
+### Shell Script (curl + jq)
+
+```bash
+#!/bin/bash
+
+PORT=8080
+
+while true; do
+  clear
+  echo "=== Printer Status ==="
+  echo
+  
+  curl -s "http://localhost:${PORT}/status" | jq -r '.[] | 
+    "\(.attributes.Name) (\(.machine_id))\n" +
+    "  Status: \(.status.CurrentStatus)\n" +
+    "  Layer: \(.status.PrintInfo.CurrentLayer)/\(.status.PrintInfo.TotalLayer)\n" +
+    "  File: \(.status.PrintInfo.Filename)\n"'
+  
+  sleep 5
+done
+```
+
+## Scriptable Widget (iOS)
+
+The API can be used with Scriptable to create iOS widgets showing printer status:
+
+```javascript
+// Scriptable widget for iOS
+const API_URL = "http://your-server:8080/status";
+
+let widget = new ListWidget();
+widget.backgroundColor = new Color("#1c1c1e");
+
+try {
+  let req = new Request(API_URL);
+  let printers = await req.loadJSON();
+  
+  if (printers.length === 0) {
+    widget.addText("No printers connected");
+  } else {
+    let printer = printers[0];
+    let info = printer.status.PrintInfo;
+    
+    // Title
+    let title = widget.addText(printer.attributes.Name);
+    title.font = Font.boldSystemFont(16);
+    title.textColor = Color.white();
+    
+    widget.addSpacer(8);
+    
+    // Progress
+    if (info.TotalLayer > 0) {
+      let progress = (info.CurrentLayer / info.TotalLayer) * 100;
+      let progressText = widget.addText(`${progress.toFixed(1)}%`);
+      progressText.font = Font.boldSystemFont(24);
+      progressText.textColor = new Color("#30d158");
+      
+      widget.addSpacer(4);
+      
+      let layerText = widget.addText(`Layer ${info.CurrentLayer}/${info.TotalLayer}`);
+      layerText.font = Font.systemFont(12);
+      layerText.textColor = Color.gray();
+      
+      widget.addSpacer(8);
+      
+      let fileText = widget.addText(info.Filename);
+      fileText.font = Font.systemFont(10);
+      fileText.textColor = Color.gray();
+      fileText.lineLimit = 1;
+    } else {
+      let statusText = widget.addText("Ready");
+      statusText.font = Font.systemFont(14);
+      statusText.textColor = Color.gray();
+    }
+  }
+} catch (error) {
+  widget.addText("Error: " + error.message);
+}
+
+Script.setWidget(widget);
+Script.complete();
+widget.presentSmall();
+```
+
+<Note>
+  For the Scriptable widget to work outside your home network, you'll need to use a proxy service like ngrok to expose the HTTP server publicly.
+</Note>
+
+### Setting up ngrok
+
+```bash
+# Install ngrok
+brew install ngrok  # macOS
+# or download from https://ngrok.com/
+
+# Forward local port to public URL
+ngrok http 8080
+
+# Use the provided HTTPS URL in your scripts
+# Example: https://abc123.ngrok.io/status
+```
+
+## Security Considerations
+
+<Warning>
+  The API does not include authentication. Consider these security measures:
+  
+  1. **Network Isolation**: Only expose the API on trusted networks
+  2. **Firewall Rules**: Use firewall rules to restrict access
+  3. **VPN Access**: Require VPN connection for remote access
+  4. **Reverse Proxy**: Use a reverse proxy with authentication (nginx, Caddy)
+  5. **Disable When Not Needed**: Turn off the proxy when not actively monitoring
+</Warning>
+
+## Troubleshooting
+
+<AccordionGroup>
+  <Accordion title="403 Forbidden Error">
+    The proxy is disabled. Enable it through the Mslicer interface or programmatically:
+    
+    ```rust
+    http_server.set_proxy_enabled(true);
+    ```
+  </Accordion>
+  
+  <Accordion title="Connection Refused">
+    Check that:
+    1. Remote print is running
+    2. You're using the correct port (check logs)
+    3. Firewall allows connections
+    4. You're connecting to the right IP address
+  </Accordion>
+  
+  <Accordion title="Empty Array Returned">
+    No printers are currently connected. Verify:
+    1. Printer is powered on
+    2. Printer is connected to the network
+    3. MQTT connection is established (check logs)
+  </Accordion>
+  
+  <Accordion title="Stale Data">
+    Check the `last_update` timestamp. If it's old:
+    1. Printer may have lost network connection
+    2. MQTT connection may have dropped
+    3. Printer may be powered off
+  </Accordion>
+</AccordionGroup>
+
+## Rate Limiting
+
+The API doesn't implement rate limiting, but consider:
+- Printers update status every few seconds
+- Polling faster than 1-2 seconds is unnecessary
+- Excessive polling may impact performance
+
+## Future Enhancements
+
+Potential improvements to the API:
+- WebSocket support for real-time updates
+- Authentication and authorization
+- Filtering by printer or status
+- Historical data and statistics
+- Control endpoints (start/stop/pause prints)
+
+<Tip>
+  For production use, consider wrapping the API with a proper backend service that adds authentication, rate limiting, and caching.
+</Tip>
